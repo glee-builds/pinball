@@ -110,7 +110,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
    exports  orbit  {x:330, y1:200, y2:290  rail (also in segs, drawn by the normal wall code),
                     x0:332, x1:358  sensor x-range (channel between rail and lane wall x=360),
                     by:275 bottom sensor y, ty:215 top sensor y}   "Rooftop Run", hero Kite
-            hideout {x:62, y:300, r:11  capture circle, t  seconds the ball is still held (0 = empty; ball sits at x,y),
+            hideout {x:62, y:300, r:13  capture circle (balls slower than 900 are caught), t  seconds the ball is still held (0 = empty; ball sits at x,y),
                      hold:1.0 full hold time}   "The Hideout", hero Ember
    st       heroes  [bool,bool,bool]  recruited (persist across balls, reset by newGame)
             boss    null or {hp,max:12,t}  Baron Gloom showdown; t = seconds left (only counts while a ball is live)
@@ -126,12 +126,33 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
      bossWin         Baron Gloom beaten (+25000), followed by surprise 'boss'; heroes reset
      bossEscape      timer ran out, heroes reset
      surprise 'alley'  secret: first reverse (top to bottom) orbit run of the game (+1500)
-     surprise 'boss'   showdown victory banner */
+     surprise 'boss'   showdown victory banner
+   ROUND 2 (ball lock, lanes + kickback, spinner, drop bank). All geometry below is data; walls are also in segs.
+   exports  lanes  [{i,x0,x1,y,t}] x4 rollover sensors, i 0 left outlane, 1 left inlane, 2 right inlane, 3 right outlane; x0..x1 = x-range,
+                   y = sensor line; t = seconds left of the 'just triggered' flash (0 = idle). Outlanes are open at the bottom (ball falls off).
+            guides: the lane guides are plain segs (vertical x:36 y 520..579 and x:334 y 470..579); the left wall now runs to y 720.
+            kickback {x,y1,y2} left outlane channel (x:23); the kicker fires up it from y 590 when st.kick
+            spinner {x:345,y:300,w:13 half-width,a angle rad,av angular speed rad/s}  "Rooftop Run" entrance; no collision, a ball crossing y either way spins it
+            drops   [{i,x,y,w:11,down}] x3 drop targets (center, half-width, down=true while dropped); each is also a seg with drop:i
+   segs     flags: off:true = switched off, hitSeg ignores it (the dropped targets; draw nothing for off segs). drop:i = drop target i.
+   st       lockLit  true after both side targets (not in multiball); STAYS true through the 1st lock, cleared only when the 2nd lock starts multiball (or newGame). Side targets do nothing extra while it is lit.
+            locks    0..1 balls locked toward Team-Up Multiball (2nd lock starts it and resets this to 0); persists across balls, reset by newGame
+            kick     left kickback armed (true at each ball start and after a drop bank)
+            banks    drop banks completed this game
+            bankT    seconds until a completed bank stands back up (0 = idle)
+   events   lockLit              both side targets lit, lock is now lit
+            lock n x y           while lockLit (not multiball) a Hideout capture OR a scored Rooftop Run orbit shot locks a ball; v = count after this lock (1, then 2); the 2nd is followed by 'multiball'
+            multiball            Team-Up Multiball started (after 2 locks)
+            lane i x y           ball rolled over lane sensor i (i as lanes); outlane scores 500 only if the ball then drains
+            kickback 0 x y       left outlane kicked the ball back up the channel
+            spin 0 x y           spinner turned another half turn (max 12 per second)
+            drop i x y           drop target i knocked down
+            bank                 all 3 drop targets down (+3000), they stand up 1.5 s later once no ball is on them */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
   var segs=[];
   function add(x1,y1,x2,y2,o){var s={x1:x1,y1:y1,x2:x2,y2:y2,e:0.45,kick:0,oneWay:false};if(o)for(var k in o)s[k]=o[k];segs.push(s);}
-  add(10,190,10,560);                 // left wall
+  add(10,190,10,720);                 // left wall (runs down past the left outlane)
   add(390,190,390,720);               // right wall
   add(360,250,360,720);               // shooter lane inner wall
   add(360,708,390,708,{e:0.1});       // plunger rest
@@ -141,10 +162,14 @@ function makeSim(){
     add(200+190*Math.cos(t0),190+190*Math.sin(t0),200+190*Math.cos(t1),190+190*Math.sin(t1),{e:0.5});
   }
   add(36,94,72,114,{e:0.6});          // deflector: sends the launch into the bumpers
-  add(10,560,116,638,{e:0.3});        // left inlane slope
-  add(360,560,254,638,{e:0.3});       // right inlane slope
+  add(36,520,36,579);                 // left lane guide: outlane (x 10-36) | inlane
+  add(334,470,334,579);               // right lane guide: inlane | outlane (x 334-360)
+  add(36,579,116,638,{e:0.3});        // left inlane slope
+  add(334,579,254,638,{e:0.3});       // right inlane slope
   add(60,490,60,560); add(60,560,105,590); add(60,490,105,590,{kick:430,id:'sling'});
   add(310,490,310,560); add(310,560,265,590); add(310,490,265,590,{kick:430,id:'sling'});
+  var drops=[],dsegs=[];
+  [172,200,228].forEach(function(x,i){add(x-11,443,x+11,447,{drop:i,e:0.3});dsegs.push(segs[segs.length-1]);drops.push({i:i,x:x,y:445,w:11,down:false});});
   var gl=Math.sqrt(25*25+30*30);
   add(360,250,390,225,{oneWay:true,nx:-25/gl,ny:-30/gl,e:0.3}); // lane gate: up only
 
@@ -158,14 +183,19 @@ function makeSim(){
     {px:248,py:645,len:46,side:-1,a:0.5,av:0,pressed:false}
   ];
   var REST=0.5,UP=-0.55,FS=20;
-  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0};}
+  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1};}
   var balls=[newBall()],ball=null;
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
-          heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false};
+          heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
+          lockLit:false,locks:0,kick:true,banks:0,bankT:0};
+  var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
+  var kickback={x:23,y1:520,y2:590};
+  var spinner={x:345,y:300,w:13,a:0,av:0},spAcc=0,spCd=0;
+  var rising=false;
   var orbit={x:330,y1:200,y2:290,x0:332,x1:358,by:275,ty:215};
-  var hideout={x:62,y:300,r:11,t:0,hold:1.0};
-  var SPOTS=[[200,222],[75,340],[325,340],[140,432],[260,432]];
+  var hideout={x:62,y:300,r:13,t:0,hold:1.0};
+  var SPOTS=[[200,222],[75,340],[325,340],[120,430],[280,430]];
   var events=[];
   function emit(t,v,x,y){events.push({t:t,v:v,x:x,y:y});}
   function pts(n){st.score+=n*st.mult*(st.mb?2:1)*(st.gold>0?3:1);}
@@ -177,10 +207,12 @@ function makeSim(){
     if(st.combo===5||st.combo===10||st.combo===20)emit('combo',st.combo);
   }
   function placeBall(){balls.length=0;balls.push(newBall());}
+  function resetBank(){rising=false;st.bankT=0;for(var k=0;k<3;k++){dsegs[k].off=false;drops[k].down=false;}}
   function newGame(){
     st.score=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
+    st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
   }
   function laneBall(){
@@ -216,9 +248,15 @@ function makeSim(){
     else if(p==='gold')st.gold=15;
     emit('surprise',p);
   }
+  function lockBall(x,y){              // lit lock: a hideout capture or an orbit shot locks a ball; the 2nd starts multiball
+    if(!st.lockLit||st.mb)return;
+    st.locks++;emit('lock',st.locks,x,y);
+    if(st.locks>=2){st.locks=0;st.lockLit=false;st.mb=true;st.mbCount++;st.queue+=2;emit('multiball');}
+  }
   function tip(f){return {x:f.px+f.side*f.len*Math.cos(f.a),y:f.py+f.len*Math.sin(f.a)};}
 
   function hitSeg(s){
+    if(s.off)return;
     var dx=s.x2-s.x1,dy=s.y2-s.y1,l2=dx*dx+dy*dy;
     var t=((ball.x-s.x1)*dx+(ball.y-s.y1)*dy)/l2,nx,ny,pen,vn;
     if(s.oneWay){
@@ -238,6 +276,10 @@ function makeSim(){
     if(vn<0){
       ball.vx-=(1+s.e)*vn*nx;ball.vy-=(1+s.e)*vn*ny;
       if(s.kick&&-vn>70){ball.vx+=nx*s.kick;ball.vy+=ny*s.kick;hit(25,'sling');emit('sling',0,ball.x,ball.y);}
+      else if(s.drop!==undefined&&-vn>90){
+        s.off=true;drops[s.drop].down=true;hit(200,'drop');emit('drop',s.drop,ball.x,ball.y);dmg(1,ball.x,ball.y);
+        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');dmg(3,ball.x,ball.y);}
+      }
       else if(-vn>220)emit('wall',-vn);
     }
   }
@@ -258,7 +300,7 @@ function makeSim(){
         if(targets[0].lit&&targets[1].lit){
           targets[0].lit=targets[1].lit=false;
           if(st.mb){pts(5000);emit('jackpot');}
-          else{st.mb=true;st.mbCount++;st.queue+=2;emit('multiball');}
+          else if(!st.lockLit){st.lockLit=true;emit('lockLit');}
         }
       }
     }
@@ -284,6 +326,25 @@ function makeSim(){
       f.av=(f.a-old)/dt;
     }
     if(st.over)return;
+    for(k=0;k<4;k++)if(lanes[k].t>0)lanes[k].t=Math.max(0,lanes[k].t-dt);
+    if(spinner.av!==0){                // spinner: spin down, score each half turn
+      spinner.a+=spinner.av*dt;spAcc+=Math.abs(spinner.av)*dt;spinner.av*=1-1.5*dt;if(Math.abs(spinner.av)<1)spinner.av=0;
+      if(spCd>0)spCd-=dt;
+      while(spAcc>=Math.PI){spAcc-=Math.PI;pts(100);if(spCd<=0){emit('spin',0,spinner.x,spinner.y);spCd=1/12;}}
+    }
+    if(rising){                        // dropped bank stands back up when clear of balls
+      if(st.bankT>0)st.bankT=Math.max(0,st.bankT-dt);
+      else{
+        var dn=0;
+        for(k=0;k<3;k++){
+          if(!dsegs[k].off)continue;
+          var clr=true,dd=drops[k];
+          for(bi=0;bi<balls.length;bi++){var ddx=balls[bi].x-dd.x,ddy=balls[bi].y-dd.y;if(ddx*ddx+ddy*ddy<14*14)clr=false;}
+          if(clr){dsegs[k].off=false;dd.down=false;}else dn++;
+        }
+        if(!dn)rising=false;
+      }
+    }
     if(st.comboT>0){st.comboT-=dt;if(st.comboT<=0)st.combo=0;}
     if(st.frenzy>0)st.frenzy-=dt;if(st.gold>0)st.gold-=dt;if(st.lowG>0)st.lowG-=dt;
     var live=false;for(k=0;k<balls.length;k++)if(balls[k].x<=360)live=true;
@@ -324,6 +385,7 @@ function makeSim(){
           ball.ob=0;var was=st.boss!==null;
           hit(400,'orbit');emit('orbit',1,ball.x,ball.y);
           if(st.mb){pts(5000);emit('jackpot');}
+          lockBall(ball.x,ball.y);
           dmg(3,ball.x,ball.y);if(!was)recruit(0);
         }
         if(py<orbit.ty&&ball.y>=orbit.ty&&ball.vy>0){ball.ot=2;ball.ob=0;}
@@ -332,13 +394,26 @@ function makeSim(){
           if(!st.alley){st.alley=true;pts(1500);emit('surprise','alley');}
         }
       }
-      if(hideout.t<=0&&ball.ign<=0&&sp<650){   // hideout capture
+      for(k=0;k<4;k++){                 // lane rollovers (downward crossings)
+        var ln=lanes[k];
+        if(ball.x>ln.x0&&ball.x<ln.x1&&py<ln.y&&ball.y>=ln.y&&ball.vy>0){
+          ln.t=0.6;emit('lane',k,ball.x,ball.y);
+          if(k===1||k===2)hit(50,'lane');
+          else if(k===0&&st.kick){st.kick=false;ball.x=kickback.x;ball.vx=0;ball.vy=-900;emit('kickback',0,ball.x,ball.y);}
+          else ball.ol=k;
+        }
+      }
+      if(ball.x>spinner.x-spinner.w&&ball.x<spinner.x+spinner.w&&((py<spinner.y)!==(ball.y<spinner.y))){
+        spinner.av=0.05*sp*(ball.vy>0?1:-1);
+      }
+      if(hideout.t<=0&&ball.ign<=0&&sp<900){   // hideout capture
         var hx=ball.x-hideout.x,hy=ball.y-hideout.y;
         if(hx*hx+hy*hy<hideout.r*hideout.r){
           ball.x=hideout.x;ball.y=hideout.y;ball.vx=ball.vy=0;ball.still=0;ball.hold=hideout.t=hideout.hold;
           var was2=st.boss!==null;
           hit(300,'hideout');emit('hideout',0,ball.x,ball.y);
           if(st.hideCd<=0){award();st.hideCd=20;}
+          lockBall(ball.x,ball.y);
           dmg(2,ball.x,ball.y);if(!was2)recruit(1);
           continue;
         }
@@ -351,7 +426,7 @@ function makeSim(){
       // a ball that stops dead on the table gets a nudge
       if(sp<10&&!(ball.x>360&&ball.y>600)){ball.still+=dt;if(ball.still>2.5){ball.vy=-320;ball.vx=(ball.x<200?1:-1)*140;ball.still=0;emit('wall',300);}}
       else ball.still=0;
-      if(ball.y>H+30||ball.x<-20||ball.x>W+20||ball.y<-40||ball.x!==ball.x)balls.splice(bi,1);
+      if(ball.y>H+30||ball.x<-20||ball.x>W+20||ball.y<-40||ball.x!==ball.x){if(ball.ol>=0&&ball.y>H+30)pts(500);balls.splice(bi,1);}
     }
     for(bi=0;bi<balls.length;bi++)for(k=bi+1;k<balls.length;k++){   // ball against ball
       var p=balls[bi],q=balls[k],bx=q.x-p.x,by=q.y-p.y,bd=Math.sqrt(bx*bx+by*by);
@@ -377,13 +452,13 @@ function makeSim(){
         st.luckyUsed=false;st.frenzy=0;st.gold=0;st.lowG=0;st.mystery=null;
         st.ball++;st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
         if(st.ball>3){st.ball=3;st.over=true;bossEnd();emit('over');}
-        else{placeBall();emit('drain');}
+        else{placeBall();st.kick=true;resetBank();emit('drain');}
       }
     }
   }
   function step(dt){if(dt>0.034)dt=0.034;var h=dt/SUB;for(var k=0;k<SUB;k++)sub(h);st.time+=dt;}
   function setFlipper(k,on){if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
-  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,hideout:hideout,flippers:flippers,balls:balls,st:st,events:events,
+  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,flippers:flippers,balls:balls,st:st,events:events,
           step:step,launch:launch,inLane:inLane,newGame:newGame,setFlipper:setFlipper,tip:tip};
 }
 </script>

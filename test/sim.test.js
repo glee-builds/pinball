@@ -80,7 +80,7 @@ function findBadNumber(v, where) {
   return null;
 }
 
-var EV = { orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0 };
+var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, lane2: 0, lane3: 0, spin: 0, drop: 0, bank: 0, orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0 };
 
 function playGame(seed) {
   var sim = loadSim(seed);
@@ -106,6 +106,7 @@ function playGame(seed) {
     for (var ei = 0; ei < sim.events.length; ei++) {
       var ev = sim.events[ei];
       if (ev.t === 'surprise') { if (ev.v === 'alley') EV.alley++; else if (ev.v === 'boss') EV.bossSurprise++; }
+      else if (ev.t === 'lane') EV['lane' + ev.v]++;
       else if (EV[ev.t] !== undefined) EV[ev.t]++;
     }
     sim.events.length = 0;
@@ -152,7 +153,9 @@ function playGame(seed) {
     seen = sim.balls.map(function (q) { return { ref: q, x: q.x, y: q.y }; });
 
     bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers') ||
-          findBadNumber(sim.orbit, 'orbit') || findBadNumber(sim.hideout, 'hideout');
+          findBadNumber(sim.orbit, 'orbit') || findBadNumber(sim.hideout, 'hideout') ||
+          findBadNumber(sim.lanes, 'lanes') || findBadNumber(sim.kickback, 'kickback') ||
+          findBadNumber(sim.spinner, 'spinner') || findBadNumber(sim.drops, 'drops');
     if (bad) return fail('NaN: ' + bad);
     if (st.time > MAX_SECONDS) return fail('game still running after ' + MAX_SECONDS + ' simulated seconds');
   }
@@ -178,5 +181,8 @@ console.log(GAMES + ' games, ' + failures + ' failed. Average ' + (totalTime / M
   's, longest ' + longest.toFixed(1) + 's, top score ' + top + '.');
 console.log('Events over ' + GAMES + ' games: orbit ' + EV.orbit + ', hideout ' + EV.hideout + ', hero ' + EV.hero +
   ', bossStart ' + EV.bossStart + ', bossWin ' + EV.bossWin + ', bossEscape ' + EV.bossEscape +
-  ', surprise alley ' + EV.alley + ', surprise boss ' + EV.bossSurprise + '.');
+  ', surprise alley ' + EV.alley + ', surprise boss ' + EV.bossSurprise +
+  ', lockLit ' + EV.lockLit + ', lock ' + EV.lock + ', multiball ' + EV.multiball + ', kickback ' + EV.kickback +
+  ', lane0 ' + EV.lane0 + ', lane1 ' + EV.lane1 + ', lane2 ' + EV.lane2 + ', lane3 ' + EV.lane3 +
+  ', spin ' + EV.spin + ', drop ' + EV.drop + ', bank ' + EV.bank + '.');
 process.exit(failures ? 1 : 0);
