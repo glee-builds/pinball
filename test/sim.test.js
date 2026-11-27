@@ -15,6 +15,10 @@
  *   - a ball leaves the table above y = 640 (through a wall or the arc)
  *   - any numeric value in the sim state is NaN or infinite
  *   - the game runs past 600 simulated seconds
+ *   - a ball outside the shooter lane stays below speed 10 for over 3 s
+ *     (the sim nudges a stopped ball after 2.5 s, so this means the nudge failed)
+ *   - a ball outside the shooter lane stays within 15 units of one spot
+ *     for over 10 s (trapped, even if it is jiggling)
  */
 'use strict';
 var fs = require('fs');
@@ -26,6 +30,12 @@ var FIRST_SEED = parseInt(process.argv[3], 10) || 1;
 var DT = 1 / 60;
 var MAX_SECONDS = 600;
 var EXIT_Y = 640;
+var STOP_SPEED = 10;        // below this a ball counts as stopped
+var STOP_SECONDS = 3.0;     // stopped for longer than this fails
+var TRAP_RADIUS = 15;       // a ball staying inside this radius counts as trapped
+var TRAP_SECONDS = 10;      // trapped for longer than this fails
+
+function inShooterLane(b) { return b.x > 360 && b.y > 600; }
 
 var html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 var m = html.match(/<script id="sim">([\s\S]*?)<\/script>/);
@@ -75,6 +85,7 @@ function playGame(seed) {
   var input = mulberry32(seed ^ 0x9E3779B9);   // separate stream for the "player"
   var st = sim.st;
   var seen = [];                                // balls alive after the previous step
+  var track = [];                               // per-ball {ref, slow, ax, ay, trap} for the stuck checks
   var frame = 0;
 
   function fail(msg) {
@@ -107,6 +118,30 @@ function playGame(seed) {
         return fail('ball removed above y=' + EXIT_Y + ', last seen x=' + seen[k].x.toFixed(1) + ' y=' + seen[k].y.toFixed(1));
       }
     }
+    // stuck checks, tracked per ball object across frames
+    var nextTrack = [];
+    for (k = 0; k < sim.balls.length; k++) {
+      b = sim.balls[k];
+      var tr = null, j;
+      for (j = 0; j < track.length; j++) if (track[j].ref === b) { tr = track[j]; break; }
+      if (!tr) tr = { ref: b, slow: 0, ax: b.x, ay: b.y, trap: 0 };
+      nextTrack.push(tr);
+      if (inShooterLane(b)) {
+        tr.slow = 0; tr.trap = 0; tr.ax = b.x; tr.ay = b.y;
+        continue;
+      }
+      if (Math.sqrt(b.vx * b.vx + b.vy * b.vy) < STOP_SPEED) tr.slow += DT; else tr.slow = 0;
+      if (tr.slow > STOP_SECONDS) {
+        return fail('ball stopped for over ' + STOP_SECONDS + 's at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
+      }
+      var ddx = b.x - tr.ax, ddy = b.y - tr.ay;
+      if (Math.sqrt(ddx * ddx + ddy * ddy) > TRAP_RADIUS) { tr.ax = b.x; tr.ay = b.y; tr.trap = 0; }
+      else tr.trap += DT;
+      if (tr.trap > TRAP_SECONDS) {
+        return fail('ball trapped within ' + TRAP_RADIUS + ' units for over ' + TRAP_SECONDS + 's at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
+      }
+    }
+    track = nextTrack;
     seen = sim.balls.map(function (q) { return { ref: q, x: q.x, y: q.y }; });
 
     bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers');
