@@ -2,6 +2,8 @@
 
 A one-table pinball game for iPhone Safari. One HTML file, no build step, no accounts.
 
+Play: https://glee-builds.github.io/pinball/
+
 ## Play
 
 - Touch the left or right half of the table to flip.
@@ -32,6 +34,12 @@ node test/sim.test.js 1 17     # replay only seed 17
 ```
 
 By default it plays 40 seeded games with random flipper input and fails if a ball escapes the table, a value goes NaN, or a game never ends. Run it after any gameplay change.
+
+## How changes reach the live site
+
+- Every push and pull request runs the test on GitHub.
+- When a change lands on `main` and the test passes, GitHub copies `main` to the `gh-pages` branch, and the site at https://glee-builds.github.io/pinball/ updates about a minute later.
+- If the test fails, the site stays as it was.
 
 ## How the code is laid out
 
