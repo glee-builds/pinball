@@ -80,6 +80,8 @@ function findBadNumber(v, where) {
   return null;
 }
 
+var EV = { orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0 };
+
 function playGame(seed) {
   var sim = loadSim(seed);
   var input = mulberry32(seed ^ 0x9E3779B9);   // separate stream for the "player"
@@ -101,6 +103,11 @@ function playGame(seed) {
     if (sim.inLane() && input() < 0.1) sim.launch(input());
 
     sim.step(DT);
+    for (var ei = 0; ei < sim.events.length; ei++) {
+      var ev = sim.events[ei];
+      if (ev.t === 'surprise') { if (ev.v === 'alley') EV.alley++; else if (ev.v === 'boss') EV.bossSurprise++; }
+      else if (EV[ev.t] !== undefined) EV[ev.t]++;
+    }
     sim.events.length = 0;
 
     var k, b, bad;
@@ -144,7 +151,8 @@ function playGame(seed) {
     track = nextTrack;
     seen = sim.balls.map(function (q) { return { ref: q, x: q.x, y: q.y }; });
 
-    bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers');
+    bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers') ||
+          findBadNumber(sim.orbit, 'orbit') || findBadNumber(sim.hideout, 'hideout');
     if (bad) return fail('NaN: ' + bad);
     if (st.time > MAX_SECONDS) return fail('game still running after ' + MAX_SECONDS + ' simulated seconds');
   }
@@ -168,4 +176,7 @@ for (var g = 0; g < GAMES; g++) {
 console.log('');
 console.log(GAMES + ' games, ' + failures + ' failed. Average ' + (totalTime / Math.max(1, GAMES - failures)).toFixed(1) +
   's, longest ' + longest.toFixed(1) + 's, top score ' + top + '.');
+console.log('Events over ' + GAMES + ' games: orbit ' + EV.orbit + ', hideout ' + EV.hideout + ', hero ' + EV.hero +
+  ', bossStart ' + EV.bossStart + ', bossWin ' + EV.bossWin + ', bossEscape ' + EV.bossEscape +
+  ', surprise alley ' + EV.alley + ', surprise boss ' + EV.bossSurprise + '.');
 process.exit(failures ? 1 : 0);
