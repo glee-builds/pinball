@@ -13,10 +13,14 @@ Play: https://glee-builds.github.io/pinball/
 What to aim for:
 
 - Light all three top lamps to raise the multiplier (up to x5). Lighting them also recruits Tide.
-- Ride the Rooftop Run, the lane beside the shooter lane, to recruit Kite. The arrow pulses when it is the shot to take.
+- Shoot the two ramps. Shoot the Skyline Ramp on the left or the Rooftop Run on the right, hard enough to climb. Either ramp recruits Kite. A weak shot stalls and rolls back out. The entrance arrow pulses when that ramp is a shot worth taking.
+- Make both ramps within six seconds for a Team Relay bonus.
 - Drop the ball into the Hideout on the left to recruit Ember. It also gives a mystery prize about every 20 seconds of play, and the star on it shows when one is ready.
-- Recruit all three heroes of The Alley Guard to start a 45 second showdown with Baron Gloom. His health bar sits under the score. Bumpers hit for 1, side targets and the Hideout for 2, the Rooftop Run for 3. Beat him for 25,000 points. The heroes reset after the showdown.
-- Hit both side targets to start a three-ball multiball. All scores double until one ball is left. The Rooftop Run is a jackpot shot during multiball.
+- Recruit all three heroes of The Alley Guard to start a 45 second showdown with Baron Gloom. His health bar sits under the score. Bumpers and drop targets hit for 1, side targets, the Hideout and the Skyline Ramp for 2, the Rooftop Run and a finished drop bank for 3. Beat him for 25,000 points. The heroes reset after the showdown.
+- Hit both side targets to light the lock. While it is lit, the Hideout and both ramps lock a ball. Lock two balls for Team-Up Multiball: three balls, and all scores double until one is left. The Rooftop Run is a jackpot shot during multiball. Locked balls show in the score rail.
+- Knock down all three drop targets in the middle for a bank bonus. They stand back up a moment later, and the bank also re-arms the kickback.
+- Roll through the inlanes for small points. The left outlane has a kickback: while its arrow is lit, a ball that rolls down that lane is kicked back up once. It re-arms with each new ball and after a drop bank. A ball lost down either outlane still scores 500.
+- Any ball crossing the spinner at the Rooftop Run entrance spins it, and every half turn scores.
 - Chain hits quickly to build a combo.
 - Catch the mystery star when it appears. There are 13 surprises to find, including a secret run down the Rooftop Run lane the wrong way.
 
@@ -48,6 +52,6 @@ By default it plays 40 seeded games with random flipper input and fails if a bal
 
 - `index.html` holds everything.
 - `<script id="sim">` is the physics and rules, with no page access, so the test can run it in Node.
-- The second script handles touch input, drawing, sound, records, and the start and game-over card.
+- The second script handles touch input, drawing, sound, records, and the start and game-over card. The table is a 2D canvas tilted with CSS, with raised parts faked by shifting them up the table over a soft shadow.
 
 Rules for changes: keep it one file, keep the sim free of page access, and do not add a service worker or web app manifest.
