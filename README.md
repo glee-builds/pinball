@@ -24,6 +24,9 @@ What to aim for:
 - Knock down all three drop targets in the middle for a bank bonus. They stand back up a moment later, and the bank also re-arms the kickback.
 - Roll through the inlanes for small points. The left outlane has a kickback: while its arrow is lit, a ball that rolls down that lane is kicked back up once. It re-arms with each new ball and after a drop bank. A ball lost down either outlane still scores 500.
 - Any ball crossing the spinner at the Rooftop Run entrance spins it, and every half turn scores.
+- Gloom's Lair: when a Rooftop Run crest is diverted, the ball rides a wire up to Baron Gloom's raised hideout above the table. Light all three guards to light the vault, then drop a ball in it for the jackpot. Fall through the exit and the ball rides back down to the left lane.
+- The Gloom Shield: during a showdown an energy barrier blocks the Rooftop Run entrance. Hit it three times to smash it. Each hit also hurts Baron Gloom.
+- Tide's Undertow: once Tide is recruited, the whirlpool between the flippers catches the next ball that drops through it, holds it a moment, then flings it back up the table.
 - Chain hits quickly to build a combo.
 - Catch the mystery star when it appears. There are 15 surprises to find, including a secret run down the Rooftop Run lane the wrong way.
 
