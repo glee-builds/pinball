@@ -24,13 +24,13 @@ What to aim for:
 - Knock down all three drop targets in the middle for a bank bonus. They stand back up a moment later, and the bank also re-arms the kickback.
 - Roll through the inlanes for small points. The left outlane has a kickback: while its arrow is lit, a ball that rolls down that lane is kicked back up once. It re-arms with each new ball and after a drop bank. A ball lost down either outlane still scores 500.
 - Any ball crossing the spinner at the Rooftop Run entrance spins it, and every half turn scores.
-- Gloom's Lair: when a Rooftop Run crest is diverted, the ball rides a wire up to Baron Gloom's raised hideout above the table. Light all three guards to light the vault, then drop a ball in it for the jackpot. Fall through the exit and the ball rides back down to the left lane.
+- Gloom's Lair: a finished drop bank or the start of a showdown opens the lair, and the next Rooftop Run crest is diverted: it rides a wire up to Baron Gloom's raised hideout above the table. Light all three guards to light the vault, then drop a ball in it for the jackpot. Fall through the exit and the ball rides back down to the left lane.
 - The Gloom Shield: during a showdown an energy barrier blocks the Rooftop Run entrance. Hit it three times to smash it. Each hit also hurts Baron Gloom.
-- Tide's Undertow: once Tide is recruited, the whirlpool between the flippers catches the next ball that drops through it, holds it a moment, then flings it back up the table.
-- Chain hits quickly to build a combo. Chain major shots (ramps, Hideout, the lair) within 5 seconds for a COMBO counter. The same ramp twice is a Double Run, the Hideout then a ramp is an Ember Rush, and three ramps in 8 seconds is a Skyway.
-- Extra ball: finish your first mission or win your first showdown to light it, then drop a ball in the Hideout to collect it. If you drain with one banked, SHOOT AGAIN lights by the plunger and you replay the same ball.
-- Rooftop Chase: complete two drop banks to light it, then drop a ball in the Hideout. The table freezes and a rooftop run takes over. Tap the left or right half of the screen to dodge falling hazards. Three hits or 20 seconds ends it, and every dodge scores.
-- Super skill shot: make a ramp crest within 4 seconds of a plunger launch, before the ball touches a bumper, for 25,000.
+- Tide's Undertow: once Tide is recruited, the whirlpool between the flippers catches the next ball that drops through it once per ball, when only one ball is in play and the ball saver is off. It holds it a moment, then flings it back up the table.
+- Chain hits quickly to build a combo. Chain major shots (ramps, Hideout, the lair) within 5 seconds for a COMBO counter. The same ramp twice within 6 seconds is an Encore, a ramp within 5 seconds of the Hideout kicking the ball out is a Hideout Hustle, and three ramps in 8 seconds is a Three-Ramp Rally.
+- Extra ball: your 2nd drop bank and your first vault jackpot each light it once, then drop a ball in the Hideout to collect it. If you drain with one banked, SHOOT AGAIN lights by the plunger and you replay the same ball.
+- Rooftop Chase: spin the spinner to light it (every 14 half turns), then drop a ball in the Hideout. The table freezes and a rooftop run takes over. Tap the left or right half of the screen to dodge falling hazards. Three hits or 12 seconds ends it. Every dodge scores 1,000, and getting through with no hits adds 5,000.
+- Super skill shot: make a ramp crest within 4 seconds of a plunger launch, before the ball touches a bumper, for 5,000. It does not count in multiball.
 - Match: when the game ends, the two-digit match spins. If its tens digit equals the tens digit of your score, you win the match.
 - Catch the mystery star when it appears. There are 16 surprises to find, including a secret run down the Rooftop Run lane the wrong way and the super skill shot.
 
