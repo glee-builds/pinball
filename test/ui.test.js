@@ -58,8 +58,8 @@ test('index.html has exactly two inline script bodies and both compile', () => {
 });
 
 test('sim emits and display handles the same event names', () => {
-  const emitted = names(simScript.body, /emit\('(\w+)'/g);
-  const handled = names(displayScript.body, /e\.t==='(\w+)'/g);
+  const emitted = names(simScript.body, /emit\(\s*['"](\w+)['"]/g);
+  const handled = names(displayScript.body, /e\.t\s*===\s*['"](\w+)['"]/g);
 
   assert.ok(emitted.size > 0, 'no emit(\'NAME\') calls found in the sim');
   assert.ok(handled.size > 0, 'no e.t===\'NAME\' handlers found in the display script');
