@@ -13,13 +13,12 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
+const { readPage } = require('./helpers/load');
 
 const ALLOWED_UNHANDLED = new Set(['orbit', 'shieldGone']);
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const html = readPage();
 
 // Every <script ...>...</script> block that has no src attribute.
 function inlineScripts(source) {
