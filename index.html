@@ -205,7 +205,31 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             wizardStart          Last Stand began (also surprise 'wizard' banner, and 'launch' events as the 2 extra balls feed in)
             superJackpot n x y   ramp crest during Last Stand, +10000 (x3 etc), v = this game-mode jackpot count; 'ramp' still fires too
             wizardEnd n          Last Stand over, v = super jackpots scored
-            surprise 'wizard'    Last Stand start banner */
+            surprise 'wizard'    Last Stand start banner
+   ROUND 5 (Gloom's Lair upper playfield). A small walled mini table ABOVE the main table, in negative y. Draw it as a raised table above the main table;
+   lv 1 balls are drawn on it. The main table is unchanged (y 0..720). The UI should lay out the logical area y = sim.top..720 (sim.W, sim.H unchanged). All data below.
+   exports  top   lowest y the UI must show (lair top edge minus a margin; the lair and its lairPath/exitPath stay inside y >= top)
+            lair  {x0:90,y0:-185,x1:310,y1:-10  bounds (the lair's outer walls; inner floor opening is at the bottom left),
+                   segs:[{x1,y1,x2,y2,e,..}]  walls (peaked ceiling) + floor + slope into the flipper, ONLY lv 1 balls hit these (NOT in sim.segs); draw them like the main walls. The floor has one kick pad (a seg with id:'sling', kick 430): it fires the normal 'sling' event, x,y inside the lair,
+                   flipper  mini flipper, same fields as sim.flippers (px,py,len:30,side:-1,a,av,pressed): sim.tip(lair.flipper) works; driven by the RIGHT flipper input (setFlipper(1)),
+                   guards:[{i,x,y,r:13,lit}] x3 "Gloom's Guards" standing targets (round, like sim.targets),
+                   vault {x,y,r:22,t,hold:1.0}  saucer near the top center; t = seconds the ball is still held (0 = empty; held ball sits at x,y),
+                   exit {x0,x1,y}  the opening in the floor at the bottom left (x-range; a lv 1 ball falling below y leaves through it),
+                   exitPath:[{x,y,h}]  wire from the exit down the left side to the main table (ride speed = ramps[0].ride; h > 0 all the way, 0 at landing)}
+            ramps[1].lairPath  [{x,y,h}] alternate path for Rooftop Run: from its crest point, up and over the top of the table to the lair entry (h ~1, last point h 0.2, ridden at ramps[1].ride); not drawn by ramp code, draw it like a ramp wire when you want to show the diverter
+   ball     lv  0 on the main table, 1 in the lair. A lv 1 ball collides ONLY with the lair walls/guards/vault/mini flipper and never sees the main table. Gravity, damping, speed cap, nudge are the same.
+            lr  0, 1 riding ramps[1].lairPath (to the lair), 2 riding lair.exitPath (down to the main table). While lr > 0: rp is -1, h > 0, no collisions, x,y,h follow the path (draw above everything). lv is 0 during both rides, becomes 1 on landing in the lair.
+            Ball-against-ball only between balls of the same lv, both h 0. A lair ball is a live ball in play (drain, saver, multiball, mission/showdown/wizard timers).
+   st       lairOpen  true = the next Rooftop Run crest is diverted to the lair (set by 'bank', 'bossStart', 'lockLit' and at each new ball after a drain; becomes false when a ball is diverted, one visit per opening; reset by newGame)
+            vaultLit  true once all 3 guards are lit (vault pays the jackpot); guards[i].lit reset on a vault jackpot; reset by newGame
+            lairVisits  balls that entered the lair this game;  vaults  jackpots paid this game
+   events   lairOpen          st.lairOpen went false to true (draw the diverter lit)
+            lairEnter 0 x y   diverted ball landed in the lair as lv 1 (x,y = landing point); Rooftop Run still scored everything first ('ramp' 1, 'orbit' 1)
+            guard i x y       guard i hit hard enough (hit 300, 2 damage in a showdown); guards stay lit
+            vaultLit          all 3 guards lit, st.vaultLit true
+            vault v x y       ball captured by the vault; v 1 = lit jackpot (+15000, 4 damage in a showdown, guards reset), v 0 = unlit (+500); ball held lair.vault.hold s then kicked down toward the mini flipper
+            (safety: a lv 1 ball that somehow gets outside the lair walls is silently put on lair.exitPath too)
+            lairExit 0 x y    lv 1 ball fell through the exit and starts riding lair.exitPath (x,y = where it left); it lands above lanes[1] as lv 0 h 0 moving down at 260 (it never drains directly) */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
   var segs=[];
@@ -241,13 +265,13 @@ function makeSim(){
     {px:248,py:645,len:46,side:-1,a:0.5,av:0,pressed:false}
   ];
   var REST=0.5,UP=-0.55,FS=20;
-  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false};}
+  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,lr:0};}
   var balls=[newBall()],ball=null;
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
           lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1,
-          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[]};
+          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,vaultLit:false,lairVisits:0,vaults:0};
   var mBanner=false;
   var missionDefs=[{i:0,hero:'Kite',name:'Sky Patrol',goal:'2 ramp crests',need:2,t:50},{i:1,hero:'Ember',name:'Fire Drill',goal:'8 bumper hits',need:8,t:35},{i:2,hero:'Tide',name:'Flood Gates',goal:'5 drop targets',need:5,t:40}];
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
@@ -268,6 +292,68 @@ function makeSim(){
     mkRamp({i:1,name:'Rooftop Run',ex0:298,ex1:358,ey:302,min:RMIN,dec:RDEC,crest:3,exit:{x:322,y:505,vx:0,vy:260},
       path:[{x:336,y:302,h:0},{x:345,y:270,h:0.35},{x:345,y:240,h:0.75},{x:345,y:212,h:1},{x:338,y:196,h:1},{x:329,y:192,h:1},{x:322,y:200,h:1},{x:322,y:260,h:1},{x:322,y:350,h:1},{x:322,y:440,h:0.9},{x:322,y:480,h:0.5},{x:322,y:505,h:0}]})
   ];
+  // ---- Gloom's Lair: upper mini playfield (lv 1), data + helpers ----
+  function cumOf(P){var c=[0],k;for(k=1;k<P.length;k++){var a=P[k-1],b=P[k];c.push(c[k-1]+Math.sqrt((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y)));}return c;}
+  var top=-200;
+  var lair={x0:90,y0:-185,x1:310,y1:-10,segs:[],
+    flipper:{px:296,py:-45,len:30,side:-1,a:0.5,av:0,pressed:false},
+    guards:[{i:0,x:150,y:-95,r:13,lit:false},{i:1,x:200,y:-85,r:13,lit:false},{i:2,x:250,y:-95,r:13,lit:false}],
+    vault:{x:200,y:-162,r:22,t:0,hold:1.0},
+    exit:{x0:90,x1:118,y:-19},
+    exitPath:[{x:108,y:-14,h:0.3},{x:80,y:0,h:0.6},{x:52,y:40,h:0.9},{x:36,y:100,h:1},{x:28,y:200,h:1},{x:26,y:330,h:1},{x:28,y:430,h:1},{x:34,y:480,h:0.6},{x:48,y:512,h:0}]};
+  (function(){
+    function w(x1,y1,x2,y2,o){var s={x1:x1,y1:y1,x2:x2,y2:y2,e:0.45,kick:0,oneWay:false};if(o)for(var k in o)s[k]=o[k];lair.segs.push(s);}
+    w(90,-155,90,-10);w(90,-155,200,-185,{e:0.5});w(200,-185,310,-155,{e:0.5});   // peaked ceiling funnels balls to the vault
+    w(310,-155,310,-72);w(310,-72,300,-48,{e:0.3});       // right wall, slope into the mini flipper
+    w(268,-30,225,-28,{e:0.3});w(225,-28,170,-25,{e:0.3,kick:430,id:'sling'});w(170,-25,118,-22,{e:0.3});                           // floor, falls to the exit opening at the bottom left
+  })();
+  lair.exitCum=cumOf(lair.exitPath);lair.exitLen=lair.exitCum[lair.exitCum.length-1];
+  ramps[1].lairPath=[{x:345,y:212,h:1},{x:349,y:120,h:1},{x:352,y:20,h:1},{x:352,y:-80,h:1},{x:346,y:-150,h:1},{x:324,y:-190,h:1},{x:285,y:-184,h:0.7},{x:262,y:-152,h:0.2}];
+  ramps[1].lairCum=cumOf(ramps[1].lairPath);ramps[1].lairLen=ramps[1].lairCum[ramps[1].lairCum.length-1];
+  function setLairOpen(){if(!st.lairOpen){st.lairOpen=true;emit('lairOpen');}}
+  function lairRide(b,dt){               // riding lairPath (lr 1) or exitPath (lr 2)
+    var r=ramps[1],P=b.lr===1?r.lairPath:lair.exitPath,c=b.lr===1?r.lairCum:lair.exitCum,len=c[c.length-1];
+    b.rs+=r.ride*dt;
+    if(b.rs>=len){
+      var e=P[P.length-1];b.x=e.x;b.y=e.y;b.h=0;b.rs=0;b.ru=0;b.still=0;b.ign=0.3;
+      if(b.lr===1){b.lv=1;b.vx=-90;b.vy=30;b.lr=0;st.lairVisits++;emit('lairEnter',0,b.x,b.y);}
+      else{b.lv=0;b.vx=0;b.vy=260;b.lr=0;}
+      return;
+    }
+    b.ru=r.ride;pathPos(b,P,c);
+  }
+  function lairLeave(b,quiet){                 // lv 1 ball falls out of the exit (or got outside the walls): ride the exit path
+    var e=lair.exitPath[0];
+    if(!quiet)emit('lairExit',0,b.x,b.y);
+    b.lv=0;b.lr=2;b.rs=0;b.ru=ramps[1].ride;b.hold=0;b.x=e.x;b.y=e.y;b.h=e.h;b.vx=b.vy=0;b.still=0;b.ol=-1;
+  }
+  function guardHit(c){
+    c.lit=true;hit(300,'guard');emit('guard',c.i,ball.x,ball.y);dmg(2,c.x,c.y);
+    if(!st.vaultLit&&lair.guards[0].lit&&lair.guards[1].lit&&lair.guards[2].lit){st.vaultLit=true;emit('vaultLit');}
+  }
+  function lairBall(dtc){                   // collisions and rules for the ball (lv 1) after integration
+    var k,sp,v=lair.vault;
+    for(k=0;k<lair.segs.length;k++)hitSeg(lair.segs[k]);
+    for(k=0;k<3;k++)hitCircle(lair.guards[k],'guard',k);
+    hitFlipper(lair.flipper);
+    sp=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
+    if(sp>VMAX){ball.vx*=VMAX/sp;ball.vy*=VMAX/sp;}
+    if(v.t<=0&&ball.ign<=0&&sp<450){     // vault capture
+      var vx=ball.x-v.x,vy=ball.y-v.y;
+      if(vx*vx+vy*vy<v.r*v.r){
+        ball.x=v.x;ball.y=v.y;ball.vx=ball.vy=0;ball.still=0;ball.hold=v.t=v.hold;
+        if(st.vaultLit){
+          pts(15000);emit('vault',1,ball.x,ball.y);st.vaults++;dmg(4,ball.x,ball.y);
+          for(k=0;k<3;k++)lair.guards[k].lit=false;st.vaultLit=false;
+        }else{hit(500,'vault');emit('vault',0,ball.x,ball.y);}
+        return;
+      }
+    }
+    if(ball.y>lair.exit.y&&ball.x>lair.x0&&ball.x<lair.x1){lairLeave(ball,false);return;}
+    if(ball.y>lair.exit.y||ball.x<lair.x0+4||ball.x>lair.x1-4||ball.y<lair.y0+4){lairLeave(ball,true);return;}   // outside the walls: safety, silent
+    if(sp<10){ball.still+=dtc;if(ball.still>2.5){ball.vy=-320;ball.vx=(ball.x<200?1:-1)*140;ball.still=0;emit('wall',300);}}
+    else ball.still=0;
+  }
   function relayMade(i,x,y){             // a ramp was made: second different ramp inside the window is a Team Relay
     if(st.rampT>0&&st.rampLast!==i&&st.rampLast>=0){pts(1500);emit('relay',0,x,y);st.relays++;}
     st.rampLast=i;st.rampT=6;
@@ -285,8 +371,9 @@ function makeSim(){
     mStep(0,x,y);
     if(st.wiz){pts(10000);st.wiz.jack++;emit('superJackpot',st.wiz.jack,x,y);}
   }
-  function rampPos(b,r){                 // place ball on the path at b.rs; velocity = u along the segment
-    var c=r.cum,P=r.path,k=1,s=b.rs;
+  function rampPos(b,r){return pathPos(b,r.path,r.cum);}
+  function pathPos(b,P,c){               // place ball on the path at b.rs; velocity = u along the segment
+    var k=1,s=b.rs;
     while(k<c.length-1&&s>c[k])k++;
     var a=P[k-1],e=P[k],sl=c[k]-c[k-1],t=sl>0?(s-c[k-1])/sl:0;
     t=t<0?0:t>1?1:t;
@@ -302,7 +389,12 @@ function makeSim(){
       b.x=p0.x;b.y=r.ey+14;b.vx=0;b.vy=160;b.h=0;b.rp=-1;b.rs=0;b.ru=0;b.rc=false;b.still=0;
       emit('rampFail',r.i,p0.x,r.ey);return;
     }
-    if(!b.rc&&b.rs>=r.cs){b.rc=true;b.ru=r.ride;b.rs=r.cs;rampPos(b,r);rampMade(b,r);}
+    if(!b.rc&&b.rs>=r.cs){
+      b.rc=true;b.ru=r.ride;b.rs=r.cs;rampPos(b,r);rampMade(b,r);
+      if(r.i===1&&st.lairOpen){          // diverter: leave the wire, ride the lair path
+        st.lairOpen=false;b.rp=-1;b.lr=1;b.rs=0;b.ru=r.ride;b.rc=false;pathPos(b,r.lairPath,r.lairCum);return;
+      }
+    }
     if(b.rs>=r.len){                   // wire end: back on the playfield with the exit velocity
       var ex=r.exit;
       b.x=ex.x;b.y=ex.y;b.vx=ex.vx;b.vy=ex.vy;b.h=0;b.rp=-1;b.rs=0;b.ru=0;b.rc=false;b.still=0;b.ign=0.3;return;
@@ -326,7 +418,7 @@ function makeSim(){
     st.score=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
-    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;
+    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;st.lairOpen=false;st.vaultLit=false;st.lairVisits=0;st.vaults=0;lair.guards.forEach(function(g){g.lit=false;});lair.vault.t=0;lair.flipper.a=0.5;lair.flipper.av=0;lair.flipper.pressed=false;
     st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
   }
@@ -348,7 +440,7 @@ function makeSim(){
   }
   function mode(){return st.wiz?'wizard':st.boss?'showdown':st.mission?'mission':'none';}
   function tryBoss(){                  // full team and nothing else running: showdown (waits behind a mission)
-    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};emit('bossStart');}
+    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};emit('bossStart');setLairOpen();}
   }
   function bossEnd(){st.boss=null;st.heroes=[false,false,false];}
   function chkWiz(){                   // Last Stand earned: 3 missions done and a showdown won
@@ -423,7 +515,7 @@ function makeSim(){
       if(s.kick&&-vn>70){ball.vx+=nx*s.kick;ball.vy+=ny*s.kick;hit(25,'sling');emit('sling',0,ball.x,ball.y);}
       else if(s.drop!==undefined&&-vn>90){
         s.off=true;drops[s.drop].down=true;hit(200,'drop');emit('drop',s.drop,ball.x,ball.y);dmg(1,ball.x,ball.y);mStep(2,ball.x,ball.y);
-        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');dmg(3,ball.x,ball.y);}
+        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');setLairOpen();dmg(3,ball.x,ball.y);}
       }
       else if(-vn>220)emit('wall',-vn);
     }
@@ -440,12 +532,14 @@ function makeSim(){
         if(out<520){ball.vx+=nx*(520-out);ball.vy+=ny*(520-out);}
         st.bumps++;hit(100*(st.frenzy>0?5:1),'bumper');emit('bumper',idx,c.x,c.y);dmg(1,c.x,c.y);mStep(1,c.x,c.y);
         if(st.bumps%40===0){pts(10000);emit('surprise','comet');}
+      }else if(kind==='guard'){
+        if(-vn>90)guardHit(c);
       }else if(-vn>90){
         hit(250,'target');c.lit=true;emit('target',idx);dmg(2,c.x,c.y);
         if(targets[0].lit&&targets[1].lit){
           targets[0].lit=targets[1].lit=false;
           if(st.mb){pts(5000);emit('jackpot');}
-          else if(!st.lockLit){st.lockLit=true;emit('lockLit');}
+          else if(!st.lockLit){st.lockLit=true;emit('lockLit');setLairOpen();}
         }
       }
     }
@@ -464,8 +558,8 @@ function makeSim(){
   }
   function sub(dt){
     var k,f,bi,b;
-    for(k=0;k<2;k++){
-      f=flippers[k];
+    for(k=0;k<3;k++){
+      f=k<2?flippers[k]:lair.flipper;
       var target=f.pressed?UP:REST,old=f.a;
       if(f.a<target)f.a=Math.min(target,f.a+FS*dt);else if(f.a>target)f.a=Math.max(target,f.a-FS*dt);
       f.av=(f.a-old)/dt;
@@ -513,15 +607,24 @@ function makeSim(){
       ball=balls[bi];
       if(ball.ign>0)ball.ign-=dt;if(ball.ob>0)ball.ob-=dt;if(ball.ot>0)ball.ot-=dt;
       if(ball.hold>0){                 // held in the hideout: pinned, no physics
-        ball.hold-=dt;hideout.t=Math.max(0,ball.hold);
-        if(ball.hold>0)continue;
-        hideout.t=0;ball.hold=0;ball.ign=0.6;ball.vx=300+Math.random()*80;ball.vy=-150+Math.random()*200;
+        ball.hold-=dt;
+        if(ball.lv===1){
+          lair.vault.t=Math.max(0,ball.hold);
+          if(ball.hold>0)continue;
+          lair.vault.t=0;ball.hold=0;ball.ign=0.6;ball.vx=120+Math.random()*80;ball.vy=60+Math.random()*80;
+        }else{
+          hideout.t=Math.max(0,ball.hold);
+          if(ball.hold>0)continue;
+          hideout.t=0;ball.hold=0;ball.ign=0.6;ball.vx=300+Math.random()*80;ball.vy=-150+Math.random()*200;
+        }
       }
       if(ball.rp>=0){rampStep(ball,dt);continue;}   // on a ramp: no physics, just the path
+      if(ball.lr>0){lairRide(ball,dt);continue;}     // lair path / exit path
       var py=ball.y;
       ball.vy+=G*(st.lowG>0?0.55:1)*dt;
       ball.vx*=1-0.04*dt;ball.vy*=1-0.04*dt;
       ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+      if(ball.lv===1){lairBall(dt);continue;}
       for(k=0;k<segs.length;k++)hitSeg(segs[k]);
       for(k=0;k<bumpers.length;k++)hitCircle(bumpers[k],'bumper',k);
       if(ball.x<360)for(k=0;k<targets.length;k++)hitCircle(targets[k],'target',k);
@@ -582,12 +685,16 @@ function makeSim(){
     }
     for(bi=0;bi<balls.length;bi++)for(k=bi+1;k<balls.length;k++){   // ball against ball
       var p=balls[bi],q=balls[k],bx=q.x-p.x,by=q.y-p.y,bd=Math.sqrt(bx*bx+by*by);
-      if(bd<2*R&&bd>1e-6&&!(p.hold>0)&&!(q.hold>0)&&p.rp<0&&q.rp<0){
+      if(bd<2*R&&bd>1e-6&&!(p.hold>0)&&!(q.hold>0)&&p.rp<0&&q.rp<0&&p.lv===q.lv&&!p.lr&&!q.lr){
         var ux=bx/bd,uy=by/bd,ov=(2*R-bd)/2;
         p.x-=ux*ov;p.y-=uy*ov;q.x+=ux*ov;q.y+=uy*ov;
         var rv=(q.vx-p.vx)*ux+(q.vy-p.vy)*uy;
         if(rv<0){p.vx+=rv*ux;p.vy+=rv*uy;q.vx-=rv*ux;q.vy-=rv*uy;}
       }
+    }
+    for(bi=0;bi<balls.length;bi++){     // a ball-ball push must not shove a lair ball through a wall
+      b=balls[bi];
+      if(b.lv===1){if(b.x<lair.x0+9.5)b.x=lair.x0+9.5;if(b.x>lair.x1-9.5)b.x=lair.x1-9.5;if(b.y<lair.y0+9.5)b.y=lair.y0+9.5;}
     }
     if(rolls[0].lit&&rolls[1].lit&&rolls[2].lit){
       rolls.forEach(function(z){z.lit=false;});
@@ -604,14 +711,14 @@ function makeSim(){
         st.luckyUsed=false;st.frenzy=0;st.gold=0;st.lowG=0;st.mystery=null;
         st.ball++;st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
         if(st.ball>3){st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();emit('over');}
-        else{placeBall();st.kick=true;resetBank();emit('drain');}
+        else{placeBall();st.kick=true;resetBank();emit('drain');setLairOpen();}
       }
     }
     st.mode=mode();
   }
   function step(dt){if(dt>0.034)dt=0.034;var h=dt/SUB;for(var k=0;k<SUB;k++)sub(h);st.time+=dt;}
-  function setFlipper(k,on){if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
-  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,missionDefs:missionDefs,flippers:flippers,balls:balls,st:st,events:events,
+  function setFlipper(k,on){if(k===1)lair.flipper.pressed=on;if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
+  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,top:top,lair:lair,missionDefs:missionDefs,flippers:flippers,balls:balls,st:st,events:events,
           step:step,launch:launch,inLane:inLane,newGame:newGame,setFlipper:setFlipper,tip:tip};
 }
 </script>
