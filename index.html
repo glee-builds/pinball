@@ -1657,13 +1657,8 @@ function makeSim() {
     }
     ball.ft = clk;
   }
-  function sub(dt) {
-    var k, f, bi, b;
-    if (st.video) {
-      vidStep(dt);
-      st.mode = mode();
-      return;
-    } // video mode: flippers, balls and every timer stand still
+  function stepFlippers(dt) {
+    var k, f;
     for (k = 0; k < 4; k++) {
       f = k < 2 ? flippers[k] : lair.flippers[k - 2];
       var target = f.pressed ? UP : REST,
@@ -1672,8 +1667,8 @@ function makeSim() {
       else if (f.a > target) f.a = Math.max(target, f.a - FS * dt);
       f.av = (f.a - old) / dt;
     }
-    if (st.over) return;
-    clk += dt;
+  }
+  function stepChain(dt) {
     if (chainT > 0) {
       chainT -= dt;
       if (chainT <= 0) {
@@ -1681,8 +1676,12 @@ function makeSim() {
         st.chain = 0;
       }
     }
+  }
+  function stepLairClock(dt) {
     var up = upNow();
     if (up) st.lairT += dt;
+  }
+  function stepBeacon(dt) {
     if (!beacon.on) {
       beacon.t -= dt;
       if (beacon.t <= 0) {
@@ -1693,6 +1692,9 @@ function makeSim() {
     var ba = -Math.PI / 2 + 1.05 * Math.sin(clk * 0.7);
     beacon.x = 200 + 150 * Math.cos(ba);
     beacon.y = 190 + 150 * Math.sin(ba);
+  }
+  function stepShield() {
+    var bi;
     if (shieldWant && !shield.up) {
       // raise the Gloom Shield once no ball is within 14 units of it
       var clr0 = true;
@@ -1714,8 +1716,13 @@ function makeSim() {
         emit('shieldUp');
       }
     }
+  }
+  function stepLaneTimers(dt) {
+    var k;
     for (k = 0; k < 4; k++) if (lanes[k].t > 0) lanes[k].t = Math.max(0, lanes[k].t - dt);
     if (st.rampT > 0) st.rampT = Math.max(0, st.rampT - dt);
+  }
+  function stepSpinner(dt) {
     if (spinner.av !== 0) {
       // spinner: spin down, score each half turn
       spinner.a += spinner.av * dt;
@@ -1736,6 +1743,9 @@ function makeSim() {
         }
       }
     }
+  }
+  function stepDropBank(dt) {
+    var k, bi;
     if (rising) {
       // dropped bank stands back up when clear of balls
       if (st.bankT > 0) st.bankT = Math.max(0, st.bankT - dt);
@@ -1758,6 +1768,8 @@ function makeSim() {
         if (!dn) rising = false;
       }
     }
+  }
+  function stepEffectTimers(dt) {
     if (st.comboT > 0) {
       st.comboT -= dt;
       if (st.comboT <= 0) st.combo = 0;
@@ -1765,6 +1777,9 @@ function makeSim() {
     if (st.frenzy > 0) st.frenzy -= dt;
     if (st.gold > 0) st.gold -= dt;
     if (st.lowG > 0) st.lowG -= dt;
+  }
+  function stepPlayTimers(dt) { // the main table's clocks, paused while the ball is upstairs
+    var k;
     var live = false;
     for (k = 0; k < balls.length; k++)
       if (balls[k].x <= 360 && balls[k].lv === 0 && balls[k].lr !== 1) live = true; // the main table's clocks stand still while the ball is upstairs
@@ -1800,6 +1815,9 @@ function makeSim() {
         }
       }
     }
+  }
+  function stepLaunches() {
+    var k, b;
     // multiball: feed queued balls up the lane, and relaunch any that fall back in
     if (st.queue > 0) {
       var busy = false;
@@ -1819,247 +1837,301 @@ function makeSim() {
         emit('launch', 0.7);
       }
     }
-    for (bi = balls.length - 1; bi >= 0; bi--) {
-      ball = balls[bi];
-      if (ball.ign > 0) ball.ign -= dt;
-      if (ball.ob > 0) ball.ob -= dt;
-      if (ball.ot > 0) ball.ot -= dt;
-      if (ball.lt > 0) ball.lt -= dt;
-      if (ball.hold > 0) {
-        // held in the hideout: pinned, no physics
-        ball.hold -= dt;
-        if (ball.mg) {
-          // held by the magnet, then flung up
-          magnet.t = Math.max(0, ball.hold);
-          if (ball.hold > 0) continue;
-          magnet.t = 0;
-          ball.hold = 0;
-          ball.mg = false;
-          ball.ign = 0.6;
-          ball.vx = (Math.random() - 0.5) * 160;
-          ball.vy = -1000;
-        } else if (ball.lv === 1) {
-          lair.vault.t = Math.max(0, ball.hold);
-          if (ball.hold > 0) continue;
-          lair.vault.t = 0;
-          ball.hold = 0;
-          ball.ign = 0.6;
-          ball.vx = (Math.random() - 0.5) * 220;
-          ball.vy = 90 + Math.random() * 60;
-        } else {
-          hideout.t = Math.max(0, ball.hold);
-          if (ball.hold > 0) continue;
-          hideout.t = 0;
-          ball.hold = 0;
-          hidT = clk;
-          ball.ign = 0.6;
-          ball.vx = 300 + Math.random() * 80;
-          ball.vy = -150 + Math.random() * 200;
-        }
-      }
-      if (ball.rp >= 0) {
-        rampStep(ball, dt);
-        continue;
-      } // on a ramp: no physics, just the path
-      if (ball.lr > 0) {
-        lairRide(ball, dt);
-        continue;
-      } // lair path / exit path
-      var py = ball.y;
-      ball.vy += G * (st.lowG > 0 ? 0.55 : 1) * dt;
-      ball.vx *= 1 - 0.04 * dt;
-      ball.vy *= 1 - 0.04 * dt;
-      ball.x += ball.vx * dt;
-      ball.y += ball.vy * dt;
-      if (ball.lv === 1) {
-        lairBall(dt, py);
-        continue;
-      }
-      for (k = 0; k < segs.length; k++) hitSeg(segs[k]);
-      for (k = 0; k < bumpers.length; k++) hitCircle(bumpers[k], 'bumper', k);
-      if (ball.x < 360) for (k = 0; k < targets.length; k++) hitCircle(targets[k], 'target', k);
-      hitFlipper(flippers[0]);
-      hitFlipper(flippers[1]);
-      var sp = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
-      if (sp > VMAX) {
-        ball.vx *= VMAX / sp;
-        ball.vy *= VMAX / sp;
-      }
-      if (st.magnet && !st.mb && balls.length === 1 && st.save <= 0 && ball.x < 360 && ball.vy > 200) {
-        // Tide's Undertow: a ball falling through the zone is caught (a ball cradled on a flipper moves too slowly down)
-        var mgx = ball.x - magnet.x,
-          mgy = ball.y - magnet.y;
-        if (mgx * mgx + mgy * mgy < magnet.r * magnet.r) {
-          ball.x = magnet.x;
-          ball.y = magnet.y;
-          ball.vx = ball.vy = 0;
-          ball.still = 0;
-          ball.mg = true;
-          ball.hold = magnet.t = 0.8;
-          st.magnet = false;
-          emit('magnet', 0, ball.x, ball.y);
-          continue;
-        }
-      }
-      for (k = 0; k < 2; k++) {
-        // ramp entrances: cross the line going up, fast enough
-        var rm = ramps[k];
-        if (ball.x > rm.ex0 && ball.x < rm.ex1 && py >= rm.ey && ball.y < rm.ey && -ball.vy >= rm.min) {
-          ball.rp = k;
-          ball.rs = 0;
-          ball.ru = Math.min(-ball.vy, VMAX);
-          ball.rc = false;
-          ball.ob = ball.ot = 0;
-          if (k === 1) spinner.av = 0.05 * ball.ru;
-          rampPos(ball, rm);
-          break;
-        }
-      }
-      if (ball.rp >= 0) continue;
-      if (ball.x < 56 && py >= 210 && ball.y < 210 && ball.vy < -300) ball.lt = 1.6; // Top Loop: up the far left side...
-      if (
-        ball.x > orbit.x0 &&
-        ball.x < orbit.x1 &&
-        ball.lt > 0 &&
-        py < orbit.ty &&
-        ball.y >= orbit.ty &&
-        ball.vy > 0
-      ) {
-        // ...around the top arc and down the Rooftop Run channel
-        ball.lt = 0;
-        st.loops++;
-        hit(AW.loop, 'loop');
-        emit('loop', st.loops, ball.x, ball.y);
-        if (st.loops % 2 === 0) setLairOpen();
-      }
-      if (beacon.on) {
-        var bcx = ball.x - beacon.x,
-          bcy = ball.y - beacon.y;
-        if (bcx * bcx + bcy * bcy < (beacon.r + R) * (beacon.r + R)) {
-          beacon.on = false;
-          beacon.t = 12;
-          hit(AW.beacon, 'beacon');
-          emit('beacon', 0, beacon.x, beacon.y);
-          setLairOpen();
-        }
-      }
-      if (ball.x > orbit.x0 && ball.x < orbit.x1) {
-        // reverse run through the channel (top to bottom): the 'alley' secret
-        if (py < orbit.ty && ball.y >= orbit.ty && ball.vy > 0) {
-          ball.ot = 2;
-          ball.ob = 0;
-        }
-        if (py < orbit.by && ball.y >= orbit.by && ball.vy > 0 && ball.ot > 0) {
-          ball.ot = 0;
-          if (!st.alley) {
-            st.alley = true;
-            pts(1500);
-            emit('surprise', 'alley');
-          }
-        }
-      }
-      for (k = 0; k < 4; k++) {
-        // lane rollovers (downward crossings)
-        var ln = lanes[k];
-        if (ball.x > ln.x0 && ball.x < ln.x1 && py < ln.y && ball.y >= ln.y && ball.vy > 0) {
-          ln.t = 0.6;
-          emit('lane', k, ball.x, ball.y);
-          if (k === 1 || k === 2) hit(50, 'lane');
-          else if (k === 0 && st.kick) {
-            st.kick = false;
-            ball.x = kickback.x;
-            ball.vx = 0;
-            ball.vy = -900;
-            emit('kickback', 0, ball.x, ball.y);
-          } else ball.ol = k;
-        }
-      }
-      if (
-        ball.x > spinner.x - spinner.w &&
-        ball.x < spinner.x + spinner.w &&
-        py < spinner.y !== ball.y < spinner.y
-      ) {
-        spinner.av = 0.05 * sp * (ball.vy > 0 ? 1 : -1);
-      }
-      if (hideout.t <= 0 && ball.ign <= 0 && sp < 900) {
-        // hideout capture
-        var hx = ball.x - hideout.x,
-          hy = ball.y - hideout.y;
-        if (hx * hx + hy * hy < hideout.r * hideout.r) {
-          ball.x = hideout.x;
-          ball.y = hideout.y;
-          ball.vx = ball.vy = 0;
-          ball.still = 0;
-          ball.hold = hideout.t = hideout.hold;
-          var was2 = st.boss !== null,
-            pick = -1,
-            wz = false;
-          if (mode() === 'none' && st.wizLit) {
-            wizStart();
-            wz = true;
-          } // Last Stand first: this capture must not also lock a ball
-          hit(300, 'hideout');
-          emit('hideout', 0, ball.x, ball.y);
-          major(ball.x, ball.y);
-          if (st.hideCd <= 0) {
-            award();
-            st.hideCd = 20;
-          }
-          lockBall(ball.x, ball.y);
-          dmg(2, ball.x, ball.y);
-          if (!was2) recruit(1);
-          if (!wz) {
-            // priority: Last Stand > extra ball > video mode > next mission
-            if (st.extraLit) {
-              st.extraLit = false;
-              st.extra++;
-              emit('extraBall');
-            } else if (st.videoLit && mode() === 'none') videoStart();
-            else if (mode() === 'none') {
-              if (st.mq.length) pick = st.mq.shift();
-              if (pick >= 0) {
-                st.missions[pick] = 2;
-                st.mission = { i: pick, n: 0, need: missionDefs[pick].need, t: missionDefs[pick].t };
-                emit('missionStart', pick);
-              }
-            }
-          }
-          continue;
-        }
-      }
-      for (k = 0; k < rolls.length; k++) {
-        var r = rolls[k],
-          ex = ball.x - r.x,
-          ey = ball.y - r.y;
-        if (!r.lit && ex * ex + ey * ey < 16 * 16) {
-          r.lit = true;
-          hit(150, 'roll', k);
-          emit('roll', k);
-        }
-      }
-      if (st.mystery) {
-        var mx = ball.x - st.mystery.x,
-          my = ball.y - st.mystery.y;
-        if (mx * mx + my * my < 19 * 19) {
-          st.mystery = null;
-          award();
-        }
-      }
-      // a ball that stops dead on the table gets a nudge
-      if (sp < 10 && !(ball.x > 360 && ball.y > 600)) {
-        ball.still += dt;
-        if (ball.still > 2.5) {
-          ball.vy = -320;
-          ball.vx = (ball.x < 200 ? 1 : -1) * 140;
-          ball.still = 0;
-          emit('wall', 300);
-        }
-      } else ball.still = 0;
-      if (ball.y > H + 30 || ball.x < -20 || ball.x > W + 20 || ball.y < -40 || ball.x !== ball.x) {
-        if (ball.ol >= 0 && ball.y > H + 30) pts(500);
-        balls.splice(bi, 1);
+  }
+  function releaseHold(dt) {
+    // held in the hideout: pinned, no physics
+    ball.hold -= dt;
+    if (ball.mg) {
+      // held by the magnet, then flung up
+      magnet.t = Math.max(0, ball.hold);
+      if (ball.hold > 0) return true;
+      magnet.t = 0;
+      ball.hold = 0;
+      ball.mg = false;
+      ball.ign = 0.6;
+      ball.vx = (Math.random() - 0.5) * 160;
+      ball.vy = -1000;
+    } else if (ball.lv === 1) {
+      lair.vault.t = Math.max(0, ball.hold);
+      if (ball.hold > 0) return true;
+      lair.vault.t = 0;
+      ball.hold = 0;
+      ball.ign = 0.6;
+      ball.vx = (Math.random() - 0.5) * 220;
+      ball.vy = 90 + Math.random() * 60;
+    } else {
+      hideout.t = Math.max(0, ball.hold);
+      if (ball.hold > 0) return true;
+      hideout.t = 0;
+      ball.hold = 0;
+      hidT = clk;
+      ball.ign = 0.6;
+      ball.vx = 300 + Math.random() * 80;
+      ball.vy = -150 + Math.random() * 200;
+    }
+    return false;
+  }
+  function catchMagnet() {
+    if (st.magnet && !st.mb && balls.length === 1 && st.save <= 0 && ball.x < 360 && ball.vy > 200) {
+      // Tide's Undertow: a ball falling through the zone is caught (a ball cradled on a flipper moves too slowly down)
+      var mgx = ball.x - magnet.x,
+        mgy = ball.y - magnet.y;
+      if (mgx * mgx + mgy * mgy < magnet.r * magnet.r) {
+        ball.x = magnet.x;
+        ball.y = magnet.y;
+        ball.vx = ball.vy = 0;
+        ball.still = 0;
+        ball.mg = true;
+        ball.hold = magnet.t = 0.8;
+        st.magnet = false;
+        emit('magnet', 0, ball.x, ball.y);
+        return true;
       }
     }
+    return false;
+  }
+  function collideTable() {
+    var k;
+    for (k = 0; k < segs.length; k++) hitSeg(segs[k]);
+    for (k = 0; k < bumpers.length; k++) hitCircle(bumpers[k], 'bumper', k);
+    if (ball.x < 360) for (k = 0; k < targets.length; k++) hitCircle(targets[k], 'target', k);
+    hitFlipper(flippers[0]);
+    hitFlipper(flippers[1]);
+  }
+  function limitSpeed() {
+    var sp = Math.sqrt(ball.vx * ball.vx + ball.vy * ball.vy);
+    if (sp > VMAX) {
+      ball.vx *= VMAX / sp;
+      ball.vy *= VMAX / sp;
+    }
+    return sp;
+  }
+  function enterRamp(py) {
+    var k;
+    for (k = 0; k < 2; k++) {
+      // ramp entrances: cross the line going up, fast enough
+      var rm = ramps[k];
+      if (ball.x > rm.ex0 && ball.x < rm.ex1 && py >= rm.ey && ball.y < rm.ey && -ball.vy >= rm.min) {
+        ball.rp = k;
+        ball.rs = 0;
+        ball.ru = Math.min(-ball.vy, VMAX);
+        ball.rc = false;
+        ball.ob = ball.ot = 0;
+        if (k === 1) spinner.av = 0.05 * ball.ru;
+        rampPos(ball, rm);
+        break;
+      }
+    }
+  }
+  function crossLoop(py) {
+    if (ball.x < 56 && py >= 210 && ball.y < 210 && ball.vy < -300) ball.lt = 1.6; // Top Loop: up the far left side...
+    if (
+      ball.x > orbit.x0 &&
+      ball.x < orbit.x1 &&
+      ball.lt > 0 &&
+      py < orbit.ty &&
+      ball.y >= orbit.ty &&
+      ball.vy > 0
+    ) {
+      // ...around the top arc and down the Rooftop Run channel
+      ball.lt = 0;
+      st.loops++;
+      hit(AW.loop, 'loop');
+      emit('loop', st.loops, ball.x, ball.y);
+      if (st.loops % 2 === 0) setLairOpen();
+    }
+  }
+  function hitBeacon() {
+    if (beacon.on) {
+      var bcx = ball.x - beacon.x,
+        bcy = ball.y - beacon.y;
+      if (bcx * bcx + bcy * bcy < (beacon.r + R) * (beacon.r + R)) {
+        beacon.on = false;
+        beacon.t = 12;
+        hit(AW.beacon, 'beacon');
+        emit('beacon', 0, beacon.x, beacon.y);
+        setLairOpen();
+      }
+    }
+  }
+  function crossAlley(py) {
+    if (ball.x > orbit.x0 && ball.x < orbit.x1) {
+      // reverse run through the channel (top to bottom): the 'alley' secret
+      if (py < orbit.ty && ball.y >= orbit.ty && ball.vy > 0) {
+        ball.ot = 2;
+        ball.ob = 0;
+      }
+      if (py < orbit.by && ball.y >= orbit.by && ball.vy > 0 && ball.ot > 0) {
+        ball.ot = 0;
+        if (!st.alley) {
+          st.alley = true;
+          pts(1500);
+          emit('surprise', 'alley');
+        }
+      }
+    }
+  }
+  function crossLanes(py) {
+    var k;
+    for (k = 0; k < 4; k++) {
+      // lane rollovers (downward crossings)
+      var ln = lanes[k];
+      if (ball.x > ln.x0 && ball.x < ln.x1 && py < ln.y && ball.y >= ln.y && ball.vy > 0) {
+        ln.t = 0.6;
+        emit('lane', k, ball.x, ball.y);
+        if (k === 1 || k === 2) hit(50, 'lane');
+        else if (k === 0 && st.kick) {
+          st.kick = false;
+          ball.x = kickback.x;
+          ball.vx = 0;
+          ball.vy = -900;
+          emit('kickback', 0, ball.x, ball.y);
+        } else ball.ol = k;
+      }
+    }
+  }
+  function kickSpinner(py, sp) {
+    if (
+      ball.x > spinner.x - spinner.w &&
+      ball.x < spinner.x + spinner.w &&
+      py < spinner.y !== ball.y < spinner.y
+    ) {
+      spinner.av = 0.05 * sp * (ball.vy > 0 ? 1 : -1);
+    }
+  }
+  function captureHideout(sp) {
+    if (hideout.t <= 0 && ball.ign <= 0 && sp < 900) {
+      // hideout capture
+      var hx = ball.x - hideout.x,
+        hy = ball.y - hideout.y;
+      if (hx * hx + hy * hy < hideout.r * hideout.r) {
+        ball.x = hideout.x;
+        ball.y = hideout.y;
+        ball.vx = ball.vy = 0;
+        ball.still = 0;
+        ball.hold = hideout.t = hideout.hold;
+        var was2 = st.boss !== null,
+          pick = -1,
+          wz = false;
+        if (mode() === 'none' && st.wizLit) {
+          wizStart();
+          wz = true;
+        } // Last Stand first: this capture must not also lock a ball
+        hit(300, 'hideout');
+        emit('hideout', 0, ball.x, ball.y);
+        major(ball.x, ball.y);
+        if (st.hideCd <= 0) {
+          award();
+          st.hideCd = 20;
+        }
+        lockBall(ball.x, ball.y);
+        dmg(2, ball.x, ball.y);
+        if (!was2) recruit(1);
+        if (!wz) {
+          // priority: Last Stand > extra ball > video mode > next mission
+          if (st.extraLit) {
+            st.extraLit = false;
+            st.extra++;
+            emit('extraBall');
+          } else if (st.videoLit && mode() === 'none') videoStart();
+          else if (mode() === 'none') {
+            if (st.mq.length) pick = st.mq.shift();
+            if (pick >= 0) {
+              st.missions[pick] = 2;
+              st.mission = { i: pick, n: 0, need: missionDefs[pick].need, t: missionDefs[pick].t };
+              emit('missionStart', pick);
+            }
+          }
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+  function lightRolls() {
+    var k;
+    for (k = 0; k < rolls.length; k++) {
+      var r = rolls[k],
+        ex = ball.x - r.x,
+        ey = ball.y - r.y;
+      if (!r.lit && ex * ex + ey * ey < 16 * 16) {
+        r.lit = true;
+        hit(150, 'roll', k);
+        emit('roll', k);
+      }
+    }
+  }
+  function collectMystery() {
+    if (st.mystery) {
+      var mx = ball.x - st.mystery.x,
+        my = ball.y - st.mystery.y;
+      if (mx * mx + my * my < 19 * 19) {
+        st.mystery = null;
+        award();
+      }
+    }
+  }
+  function nudgeStill(dt, sp) {
+    // a ball that stops dead on the table gets a nudge
+    if (sp < 10 && !(ball.x > 360 && ball.y > 600)) {
+      ball.still += dt;
+      if (ball.still > 2.5) {
+        ball.vy = -320;
+        ball.vx = (ball.x < 200 ? 1 : -1) * 140;
+        ball.still = 0;
+        emit('wall', 300);
+      }
+    } else ball.still = 0;
+  }
+  function dropLostBall(bi) {
+    if (ball.y > H + 30 || ball.x < -20 || ball.x > W + 20 || ball.y < -40 || ball.x !== ball.x) {
+      if (ball.ol >= 0 && ball.y > H + 30) pts(500);
+      balls.splice(bi, 1);
+    }
+  }
+  function stepBall(bi, dt) {
+    ball = balls[bi];
+    if (ball.ign > 0) ball.ign -= dt;
+    if (ball.ob > 0) ball.ob -= dt;
+    if (ball.ot > 0) ball.ot -= dt;
+    if (ball.lt > 0) ball.lt -= dt;
+    if (ball.hold > 0 && releaseHold(dt)) return;
+    if (ball.rp >= 0) {
+      rampStep(ball, dt);
+      return;
+    } // on a ramp: no physics, just the path
+    if (ball.lr > 0) {
+      lairRide(ball, dt);
+      return;
+    } // lair path / exit path
+    var py = ball.y;
+    ball.vy += G * (st.lowG > 0 ? 0.55 : 1) * dt;
+    ball.vx *= 1 - 0.04 * dt;
+    ball.vy *= 1 - 0.04 * dt;
+    ball.x += ball.vx * dt;
+    ball.y += ball.vy * dt;
+    if (ball.lv === 1) {
+      lairBall(dt, py);
+      return;
+    }
+    collideTable();
+    var sp = limitSpeed();
+    if (catchMagnet()) return;
+    enterRamp(py);
+    if (ball.rp >= 0) return;
+    crossLoop(py);
+    hitBeacon();
+    crossAlley(py);
+    crossLanes(py);
+    kickSpinner(py, sp);
+    if (captureHideout(sp)) return;
+    lightRolls();
+    collectMystery();
+    nudgeStill(dt, sp);
+    dropLostBall(bi);
+  }
+  function collideBalls() {
+    var k, bi;
     for (bi = 0; bi < balls.length; bi++)
       for (k = bi + 1; k < balls.length; k++) {
         // ball against ball
@@ -2095,6 +2167,8 @@ function makeSim() {
           }
         }
       }
+  }
+  function stepRollBonus() {
     if (rolls[0].lit && rolls[1].lit && rolls[2].lit) {
       rolls.forEach(function (z) {
         z.lit = false;
@@ -2105,6 +2179,9 @@ function makeSim() {
       emit('bonus', st.mult);
       recruit(2);
     }
+  }
+  function stepSaveTimer(dt) {
+    var k;
     if (st.save > 0) {
       for (k = 0; k < balls.length; k++)
         if (balls[k].x <= 360 && balls[k].lv === 0 && balls[k].lr !== 1) {
@@ -2112,10 +2189,14 @@ function makeSim() {
           break;
         }
     }
+  }
+  function stepMultiballEnd() {
     if (st.mb && !st.wiz && balls.length + st.queue <= 1) {
       st.mb = false;
       emit('mbend');
     }
+  }
+  function stepDrain() {
     if (balls.length === 0 && st.queue === 0) {
       if (st.save > 0) {
         st.save = 0;
@@ -2168,6 +2249,33 @@ function makeSim() {
         }
       }
     }
+  }
+  function sub(dt) {
+    var bi;
+    if (st.video) {
+      vidStep(dt);
+      st.mode = mode();
+      return;
+    } // video mode: flippers, balls and every timer stand still
+    stepFlippers(dt);
+    if (st.over) return;
+    clk += dt;
+    stepChain(dt);
+    stepLairClock(dt);
+    stepBeacon(dt);
+    stepShield();
+    stepLaneTimers(dt);
+    stepSpinner(dt);
+    stepDropBank(dt);
+    stepEffectTimers(dt);
+    stepPlayTimers(dt);
+    stepLaunches();
+    for (bi = balls.length - 1; bi >= 0; bi--) stepBall(bi, dt);
+    collideBalls();
+    stepRollBonus();
+    stepSaveTimer(dt);
+    stepMultiballEnd();
+    stepDrain();
     st.mode = mode();
   }
   function step(dt) {
