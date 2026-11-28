@@ -234,7 +234,30 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             guard i x y        guard i lit
             vaultLit           all 3 guards lit
             vault 0 x y        vault hit while lit (+15000)
-            lairExit 0 x y     ball came back to the main table from the exit wire (x,y = landing point) */
+            lairExit 0 x y     ball came back to the main table from the exit wire (x,y = landing point)
+   ROUND 6 (Gloom Shield, Tide's magnet save, extra ball / shoot again, match). Rules plus one new seg.
+   segs     one new seg with flag shield:true: the Gloom Shield, a slanted bar (298,316)-(358,310) just below the Rooftop Run entrance (ramps[1].ey 302). Drawn as a plain wall unless off:true
+            (it is off whenever st.shield is 0). The slant makes a ball that lands on top roll off to the left. It is a normal seg for hitSeg (e 0.5).
+   st       shield   Gloom Shield hits left (0 = down). bossStart sets 3 and turns the seg on; reaching 0, or any showdown end (win, escape, game over), turns it off and sets 0. newGame sets 0
+            tideIn   true once Tide (hero 2) was recruited this game (NOT reset by showdowns or balls), reset by newGame
+            magnet   true while the magnet save is available for this ball: set when Tide is recruited and at every new ball / shoot again if tideIn, false once used; false after newGame
+            ebLit    extra ball is lit (collect it with a Hideout capture); ebEarned  times it was lit this game; extraBalls  earned extra balls waiting to be played; all reset by newGame
+            match    -1 until game over, then 0,10..90 (random); matchWin  true if the tens digit of the score equals match/10
+   ball     mh  seconds left of a magnet hold (0 normally; the ball is pinned at x,y with no physics and no ball-ball contact while mh > 0)
+   rules    Gloom Shield: while st.shield > 0 the Rooftop Run (ramps[1]) entrance cannot trigger. A lv 0 ball hitting the shield seg at normal speed > 90: shield-1, hit(250), 1 damage to Baron Gloom, 'shieldHit'; at 0: 'shieldDown'.
+            Magnet save: needs st.tideIn, st.magnet, st.save <= 0, not multiball (st.mb or more than one ball). A lv 0 ball (not on a ramp or wire) crossing y 680 going down with x between the flipper pivots
+            (left pivot x - 6 .. right pivot x + 6, i.e. 116..254: balls that slide off the outer side of a bat count too) is caught: 'magnet' event, st.magnet false, held 0.8 s at the middle of the gap (ball.mh), then fired straight up with vy -1100 (ign 0.3).
+            Extra ball: lights ('extraBallLit') on the 2nd completed drop bank of the game and on the first vault of the game, each at most once (a trigger that finds it already lit waits for its next chance);
+            never lights while lit. A Hideout capture while lit collects it ('extraBall': ebLit false, extraBalls+1). When the last ball drains and extraBalls > 0: extraBalls-1, the SAME ball number is played again, 'shootAgain'
+            is emitted instead of 'drain'/'over' (same cleanup as a drain). The mystery prize 'extra' (adds a multiball ball) is unrelated.
+            Match: at game over, match = 10 * random(0..9); matchWin = (floor(score/10) % 10) * 10 === match.
+   events   shieldHit n x y      shield hit, v = hits left
+            shieldDown           the shield ran out of hits (it is also gone, silently, when a showdown ends)
+            magnet 0 x y         magnet caught a ball (x,y = where)
+            extraBallLit         extra ball lit
+            extraBall            extra ball collected (Hideout capture)
+            shootAgain           the last ball drained and an extra ball is played: same ball number, fresh ball
+            match n              game over, v = the drawn match number; followed by 'matchWin' if it matches, then 'over' */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
   var segs=[];
@@ -261,6 +284,8 @@ function makeSim(){
   add(360,250,390,225,{oneWay:true,nx:-25/gl,ny:-30/gl,e:0.3}); // lane gate: up only
 
   add(330,200,330,290);               // orbit rail: channel beside the shooter lane (open at both ends)
+  add(298,316,358,310,{shield:true,off:true,e:0.5});   // Gloom Shield: blocks the Rooftop Run entrance during a showdown (slanted so a ball on top rolls off left)
+  var shieldSeg=segs[segs.length-1];
 
   var bumpers=[{x:130,y:255,r:22},{x:270,y:255,r:22},{x:200,y:345,r:22}];
   var targets=[{x:10,y:400,r:12,lit:false},{x:360,y:400,r:12,lit:false}];
@@ -270,13 +295,15 @@ function makeSim(){
     {px:248,py:645,len:46,side:-1,a:0.5,av:0,pressed:false}
   ];
   var REST=0.5,UP=-0.55,FS=20;
-  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,wp:-1,ws:0,lt:0};}
+  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,wp:-1,ws:0,lt:0,mh:0};}
   var balls=[newBall()],ball=null;
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
           lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1,
-          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,lairs:0};
+          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,lairs:0,
+          shield:0,tideIn:false,magnet:false,ebLit:false,ebEarned:0,extraBalls:0,match:-1,matchWin:false};
+  var ebBank=false,ebVault=false;
   var mBanner=false;
   var missionDefs=[{i:0,hero:'Kite',name:'Sky Patrol',goal:'2 ramp crests',need:2,t:50},{i:1,hero:'Ember',name:'Fire Drill',goal:'8 bumper hits',need:8,t:35},{i:2,hero:'Tide',name:'Flood Gates',goal:'5 drop targets',need:5,t:40}];
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
@@ -403,6 +430,7 @@ function makeSim(){
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
     st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;
+    st.shield=0;shieldSeg.off=true;st.tideIn=false;st.magnet=false;st.ebLit=false;st.ebEarned=0;st.extraBalls=0;st.match=-1;st.matchWin=false;ebBank=ebVault=false;
     st.lairOpen=false;st.lairs=0;lair.vaultLit=false;lair.guards.forEach(function(g){g.lit=false;});
     st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
@@ -420,14 +448,16 @@ function makeSim(){
   function recruit(i){                 // a hero joins; the full team starts the showdown
     if(st.heroes[i]||st.wiz)return;    // nobody joins during Last Stand (heroes reset when it ends)
     st.heroes[i]=true;pts(1000);emit('hero',i);
+    if(i===2&&!st.tideIn){st.tideIn=true;st.magnet=true;}
     if(st.missions[i]===0){st.missions[i]=1;st.mq.push(i);emit('missionReady',i);}
     tryBoss();
   }
+  function ebLight(){st.ebLit=true;st.ebEarned++;emit('extraBallLit');}
   function mode(){return st.wiz?'wizard':st.boss?'showdown':st.mission?'mission':'none';}
   function tryBoss(){                  // full team and nothing else running: showdown (waits behind a mission)
-    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};emit('bossStart');openLair();}
+    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};st.shield=3;shieldSeg.off=false;emit('bossStart');openLair();}
   }
-  function bossEnd(){st.boss=null;st.heroes=[false,false,false];}
+  function bossEnd(){st.boss=null;st.heroes=[false,false,false];st.shield=0;shieldSeg.off=true;}
   function chkWiz(){                   // Last Stand earned: 3 missions done and a showdown won
     if(!st.wiz&&!st.wizLit&&st.bossWins>=1&&st.missions[0]===3&&st.missions[1]===3&&st.missions[2]===3){st.wizLit=true;emit('wizardLit');}
   }
@@ -500,7 +530,11 @@ function makeSim(){
       if(s.kick&&-vn>70){ball.vx+=nx*s.kick;ball.vy+=ny*s.kick;hit(25,'sling');emit('sling',0,ball.x,ball.y);}
       else if(s.drop!==undefined&&-vn>90){
         s.off=true;drops[s.drop].down=true;hit(200,'drop');emit('drop',s.drop,ball.x,ball.y);dmg(1,ball.x,ball.y);mStep(2,ball.x,ball.y);
-        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');openLair();dmg(3,ball.x,ball.y);}
+        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');openLair();if(st.banks>=2&&!ebBank&&!st.ebLit){ebBank=true;ebLight();}dmg(3,ball.x,ball.y);}
+      }
+      else if(s.shield&&-vn>90){
+        var left=--st.shield;hit(250,'shield');dmg(1,ball.x,ball.y);emit('shieldHit',left,ball.x,ball.y);
+        if(left<=0){st.shield=0;s.off=true;emit('shieldDown');}
       }
       else if(-vn>220)emit('wall',-vn);
     }
@@ -538,6 +572,7 @@ function makeSim(){
   function vaultHit(c){
     pts(15000);dmg(4,c.x,c.y);emit('vault',0,c.x,c.y);
     lair.guards.forEach(function(g){g.lit=false;});lair.vaultLit=false;
+    if(!ebVault&&!st.ebLit){ebVault=true;ebLight();}
   }
   function lairBall(dt){                 // one substep for a ball in the lair
     var k;
@@ -622,6 +657,11 @@ function makeSim(){
         if(ball.hold>0)continue;
         hideout.t=0;ball.hold=0;ball.ign=0.6;ball.vx=300+Math.random()*80;ball.vy=-150+Math.random()*200;
       }
+      if(ball.mh>0){                   // held by Tide's magnet: pinned, then fired up through the gap
+        ball.mh-=dt;ball.vx=ball.vy=0;ball.still=0;
+        if(ball.mh>0)continue;
+        ball.mh=0;ball.vx=0;ball.vy=-1100;ball.ign=0.3;continue;
+      }
       if(ball.rp>=0){rampStep(ball,dt);continue;}   // on a ramp: no physics, just the path
       if(ball.wp>=0){wireStep(ball,dt);continue;}   // on a lair wire: same
       if(ball.lv===1){lairBall(dt);continue;}       // in the lair: its own little table
@@ -629,6 +669,12 @@ function makeSim(){
       ball.vy+=G*(st.lowG>0?0.55:1)*dt;
       ball.vx*=1-0.04*dt;ball.vy*=1-0.04*dt;
       ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
+      if(st.tideIn&&st.magnet&&st.save<=0&&!st.mb&&balls.length===1&&py<680&&ball.y>=680&&ball.vy>0){
+        var t0=tip(flippers[0]),t1=tip(flippers[1]);
+        if(ball.x>=flippers[0].px-6&&ball.x<=flippers[1].px+6){
+          st.magnet=false;ball.x=(t0.x+t1.x)/2;ball.y=680;ball.vx=ball.vy=0;ball.mh=0.8;ball.still=0;emit('magnet',0,ball.x,ball.y);continue;
+        }
+      }
       for(k=0;k<segs.length;k++)hitSeg(segs[k]);
       for(k=0;k<bumpers.length;k++)hitCircle(bumpers[k],'bumper',k);
       if(ball.x<360)for(k=0;k<targets.length;k++)hitCircle(targets[k],'target',k);
@@ -637,7 +683,7 @@ function makeSim(){
       if(sp>VMAX){ball.vx*=VMAX/sp;ball.vy*=VMAX/sp;}
       for(k=0;k<2;k++){                 // ramp entrances: cross the line going up, fast enough
         var rm=ramps[k];
-        if(ball.x>rm.ex0&&ball.x<rm.ex1&&py>=rm.ey&&ball.y<rm.ey&&-ball.vy>=rm.min){
+        if(!(k===1&&st.shield>0)&&ball.x>rm.ex0&&ball.x<rm.ex1&&py>=rm.ey&&ball.y<rm.ey&&-ball.vy>=rm.min){
           ball.rp=k;ball.rs=0;ball.ru=Math.min(-ball.vy,VMAX);ball.rc=false;ball.ob=ball.ot=0;
           if(k===1)spinner.av=0.05*ball.ru;
           rampPos(ball,rm);break;
@@ -670,6 +716,7 @@ function makeSim(){
           var was2=st.boss!==null,pick=-1;
           if(mode()==='none'&&st.wizLit)wizStart();   // Last Stand first: this capture must not also lock a ball
           hit(300,'hideout');emit('hideout',0,ball.x,ball.y);
+          if(st.ebLit){st.ebLit=false;st.extraBalls++;emit('extraBall');}
           if(st.hideCd<=0){award();st.hideCd=20;}
           lockBall(ball.x,ball.y);
           dmg(2,ball.x,ball.y);if(!was2)recruit(1);
@@ -689,7 +736,7 @@ function makeSim(){
     }
     for(bi=0;bi<balls.length;bi++)for(k=bi+1;k<balls.length;k++){   // ball against ball
       var p=balls[bi],q=balls[k],bx=q.x-p.x,by=q.y-p.y,bd=Math.sqrt(bx*bx+by*by);
-      if(bd<2*R&&bd>1e-6&&!(p.hold>0)&&!(q.hold>0)&&p.rp<0&&q.rp<0&&p.wp<0&&q.wp<0&&p.lv===q.lv){
+      if(bd<2*R&&bd>1e-6&&!(p.hold>0)&&!(q.hold>0)&&!(p.mh>0)&&!(q.mh>0)&&p.rp<0&&q.rp<0&&p.wp<0&&q.wp<0&&p.lv===q.lv){
         var ux=bx/bd,uy=by/bd,ov=(2*R-bd)/2;
         p.x-=ux*ov;p.y-=uy*ov;q.x+=ux*ov;q.y+=uy*ov;
         var rv=(q.vx-p.vx)*ux+(q.vy-p.vy)*uy;
@@ -709,9 +756,15 @@ function makeSim(){
       else if(!st.luckyUsed&&Math.random()<0.15){st.luckyUsed=true;placeBall();emit('surprise','lucky');}
       else{
         st.luckyUsed=false;st.frenzy=0;st.gold=0;st.lowG=0;st.mystery=null;
-        st.ball++;st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
-        if(st.ball>3){st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();emit('over');}
-        else{placeBall();st.kick=true;resetBank();emit('drain');}
+        var again=st.extraBalls>0;
+        if(!again)st.ball++;
+        st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
+        if(st.ball>3){
+          st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();
+          st.match=((Math.random()*10)|0)*10;st.matchWin=(Math.floor(st.score/10)%10)*10===st.match;
+          emit('match',st.match);if(st.matchWin)emit('matchWin');emit('over');
+        }
+        else{placeBall();st.kick=true;st.magnet=st.tideIn;resetBank();if(again){st.extraBalls--;emit('shootAgain');}else emit('drain');}
       }
     }
     st.mode=mode();
