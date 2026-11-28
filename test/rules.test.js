@@ -273,7 +273,6 @@ function randomGame(seed) {
 
 function snapshot(sim) {
   const st = JSON.parse(JSON.stringify(sim.st));
-  delete st.time; // remove in task G
   return JSON.parse(JSON.stringify({
     st: st,
     guards: sim.lair.guards.map(function (q) { return q.lit; }),
@@ -318,10 +317,7 @@ test('1. newGame resets state and mutable geometry to a fresh sim', function () 
   sim.newGame();
   const fresh = loadSim(99);
   fresh.newGame();
-  // st.videoPerfect is only created the first time a Rooftop Chase ends, and newGame
-  // does not clear it (see report). Not compared here.
   const a = snapshot(sim), b = snapshot(fresh);
-  delete a.st.videoPerfect; delete b.st.videoPerfect;
   assert.deepStrictEqual(a, b);
   assert.strictEqual(sim.st.over, false);
   assert.strictEqual(sim.st.ball, 1);

@@ -63,6 +63,7 @@ By default it plays 40 seeded games with random flipper input and fails if a bal
 
 - `index.html` holds everything.
 - `<script id="sim">` is the physics and rules, with no page access, so the test can run it in Node.
+- Award sizes live in one table, `sim.awards`. The display reads its text from it, and the numbers in this README must match it.
 - The second script handles touch input, drawing, sound, records, and the start and game-over card. The table is a 2D canvas tilted with CSS, with raised parts faked by shifting them up the table over a soft shadow.
 
 Rules for changes: keep it one file, keep the sim free of page access, and do not add a service worker or web app manifest.
