@@ -6,35 +6,13 @@
  */
 const test = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
+const load = require('./helpers/load');
 
 const DT = 1 / 60;
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const m = html.match(/<script id="sim">([\s\S]*?)<\/script>/);
-assert.ok(m, 'no <script id="sim"> found in index.html');
-const simSource = m[1];
-
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return function () {
-    a = (a + 0x6D2B79F5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function loadSim(seed) {
-  const ctx = vm.createContext({});
-  vm.runInContext(simSource, ctx, { filename: 'index.html#sim' });
-  ctx.__rand = mulberry32(seed);
-  vm.runInContext('Math.random = __rand;', ctx);
-  return vm.runInContext('makeSim()', ctx);
-}
+const simSource = load.extractSim(load.readPage());
+assert.ok(simSource !== null, 'no <script id="sim"> found in index.html');
+const loadSim = load.makeLoader(simSource);
 
 // Returns { sim, ball, log } with a showdown running and the shield up.
 function shieldUp() {
