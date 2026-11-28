@@ -82,7 +82,7 @@ function findBadNumber(v, where) {
 
 var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, lane2: 0, lane3: 0, spin: 0, drop: 0, bank: 0, orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0, ramp0: 0, ramp1: 0, rampFail: 0, relay: 0,
   missionReady: 0, missionStart: 0, missionDone: 0, missionFail: 0, wizardLit: 0, wizardStart: 0, superJackpot: 0, wizardEnd: 0,
-  lairOpen: 0, lairEnter: 0, guard: 0, vaultLit: 0, vault0: 0, vault1: 0, lairExit: 0,
+  lairOpen: 0, lairEnter: 0, lairSave: 0, guard: 0, throne: 0, vaultLit: 0, vault0: 0, vault1: 0, lairLevel: 0, lairExit: 0, beacon: 0, loop: 0,
   shieldUp: 0, shieldHit: 0, shieldDown: 0, magnet: 0, extraLit: 0, extraBall: 0, shootAgain: 0, match: 0, matchWin: 0, videoLit: 0, videoStart: 0, videoHit: 0, videoDodge: 0, videoEnd: 0, chain: 0,
   encore: 0, hustle: 0, rally: 0, superskill: 0 };
 var VIDEO_MAX = 22;          // a video mode longer than this many simulated seconds fails
@@ -132,8 +132,8 @@ function playGame(seed) {
           return fail('path ball left the area at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1) + ' h=' + b.h.toFixed(2));
         }
       } else if (b.lv === 1) {
-        var L = sim.lair, mg = sim.R - 1;
-        if (b.x < L.x0 + mg || b.x > L.x1 - mg || b.y < L.y0 + mg || b.y > L.y1 - mg) {
+        // the lair is a full table in the same frame as the main one
+        if (b.y < EXIT_Y && outsideTable(b)) {
           return fail('lair ball left the lair at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
         }
       } else if (b.y < EXIT_Y && outsideTable(b)) {
@@ -213,7 +213,8 @@ console.log('Events over ' + GAMES + ' games: orbit ' + EV.orbit + ', hideout ' 
   ', missionReady ' + EV.missionReady + ', missionStart ' + EV.missionStart + ', missionDone ' + EV.missionDone + ', missionFail ' + EV.missionFail +
   ', wizardLit ' + EV.wizardLit + ', wizardStart ' + EV.wizardStart + ', superJackpot ' + EV.superJackpot + ', wizardEnd ' + EV.wizardEnd +
   ', lairOpen ' + EV.lairOpen + ', lairEnter ' + EV.lairEnter + ', guard ' + EV.guard + ', vaultLit ' + EV.vaultLit +
-  ', vault0 ' + EV.vault0 + ', vault1 ' + EV.vault1 + ', lairExit ' + EV.lairExit + '.');
+  ', vault0 ' + EV.vault0 + ', vault1 ' + EV.vault1 + ', lairExit ' + EV.lairExit + ', lairSave ' + EV.lairSave + ', throne ' + EV.throne +
+  ', lairLevel ' + EV.lairLevel + ', beacon ' + EV.beacon + ', loop ' + EV.loop + '.');
 console.log('Round 6 events over ' + GAMES + ' games: shieldUp ' + EV.shieldUp + ', shieldHit ' + EV.shieldHit + ', shieldDown ' + EV.shieldDown +
   ', magnet ' + EV.magnet + ', extraLit ' + EV.extraLit + ', extraBall ' + EV.extraBall + ', shootAgain ' + EV.shootAgain +
   ', match ' + EV.match + ', matchWin ' + EV.matchWin + ', videoLit ' + EV.videoLit + ', videoStart ' + EV.videoStart +
