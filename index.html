@@ -307,13 +307,13 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             missionsDone  missions completed this game
             match  -1 until game over, then 0..9 (show match*10 as the two-digit match);  matchWin  true if match equals the tens digit of the final score
             videoLit  Rooftop Chase is lit (the next Hideout capture starts it)
-            video  null or {t,x,obs,dodged,hits}  Rooftop Chase running: t seconds left (counts down from 20), x hero lane 0..2, obs [{lane 0..2,y 0..1}] falling obstacles (y 0 top, 1 = hero row), dodged, hits
+            video  null or {t,x,obs,dodged,hits}  Rooftop Chase running: t seconds left (counts down from videoDef.t), x hero lane 0..2, obs [{lane 0..2,y 0..1}] falling obstacles (y 0 top, 1 = hero row), dodged, hits
             chain  major shots in a row (ramp crest, Hideout capture, lair entry), each within 5 s of the previous; 0 after 5 s idle
             namedCombos  named combos this game
             mode  now also 'video' (ONE mode at a time; video never starts during mission, showdown or Last Stand)
    rules    Gloom Shield: raised when a showdown starts (waits until no ball is within 14 units of it, so it can rise a moment later), lowered when the showdown ends. While up it is solid: the Rooftop Run entrance cannot be entered. A ball coming down the channel from above passes through without counting. A hit with speed into it > 90 counts: +250 and 1 showdown damage; the 3rd hit drops it.
             Magnet: while st.magnet, with one ball in play (no multiball) and the ball saver off, a ball outside the shooter lane moving down (vy > 200) through the zone is caught, held 0.8 s (pinned, no physics) and flung up (vy about -1000, small random vx). A ball cradled on a raised flipper moves too slowly to be caught.
-            Extra ball: lit by the 2nd drop bank of the game and by the 1st vault jackpot, each once (a trigger that finds it already lit is used up). Shoot again: a real drain (no saver, no lucky save) with st.extra > 0 spends one and replays the same ball number ('drain' then 'shootAgain').
+            Extra ball: lit by the 2nd drop bank of the game and by the 1st vault jackpot, each once (a trigger that arrives while it is already lit is kept for the next time). Shoot again: a real drain (no saver, no lucky save) with st.extra > 0 spends one and replays the same ball number ('drain' then 'shootAgain').
             Match: at game over, 'match' fires once, v = st.match*10.
             Video mode: videoLit every 14th scoring spinner half turn (not while lit or running). A Hideout capture while lit starts it (when mode is 'none'): the captured ball stays held and EVERY other thing freezes (balls, flippers, mission/showdown/wizard/combo/saver/mystery/hideout timers, spinner, lanes). New press of setFlipper(0) = hero one lane left, setFlipper(1) = one lane right (holding does nothing); flippers do not move. Obstacles spawn at the top of a random lane about every 0.7 s and fall at 0.6 rising to 1.2 per second; reaching y >= 1 in the hero's lane is a hit, otherwise a dodge. 3 hits or t = 0 ends it (+500 per dodge); then everything resumes and the Hideout kicks its ball out.
             Hideout capture priority when several are lit: Last Stand > collect extra ball > video mode > next mission.
@@ -383,7 +383,7 @@ function makeSim(){
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
           lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1,
           missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,vaultLit:false,lairVisits:0,vaults:0,
-          magnet:false,tideIn:false,extraLit:false,extra:0,missionsDone:0,match:-1,matchWin:false,videoLit:false,video:null,chain:0,namedCombos:0};
+          magnet:false,tideIn:false,extraLit:false,extra:0,missionsDone:0,match:-1,matchWin:false,videoLit:false,video:null,chain:0,namedCombos:0,videoPerfect:false};
   var mBanner=false;
   var missionDefs=[{i:0,hero:'Kite',name:'Sky Patrol',goal:'2 ramp crests',need:2,t:50},{i:1,hero:'Ember',name:'Fire Drill',goal:'8 bumper hits',need:8,t:35},{i:2,hero:'Tide',name:'Flood Gates',goal:'5 drop targets',need:5,t:40}];
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
@@ -540,11 +540,11 @@ function makeSim(){
   function placeBall(){balls.length=0;balls.push(newBall());}
   function resetBank(){rising=false;st.bankT=0;for(var k=0;k<3;k++){dsegs[k].off=false;drops[k].down=false;}}
   function newGame(){
-    st.score=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
+    st.score=0;st.time=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
     st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;st.lairOpen=false;st.vaultLit=false;st.lairVisits=0;st.vaults=0;
-    st.magnet=false;st.tideIn=false;st.extraLit=false;st.extra=0;st.missionsDone=0;st.match=-1;st.matchWin=false;st.videoLit=false;st.video=null;st.chain=0;st.namedCombos=0;
+    st.magnet=false;st.tideIn=false;st.extraLit=false;st.extra=0;st.missionsDone=0;st.match=-1;st.matchWin=false;st.videoLit=false;st.video=null;st.chain=0;st.namedCombos=0;st.videoPerfect=false;
     ebBank=false;ebVault=false;spins=0;vSp=0;clk=0;chainT=0;lastRI=-1;lastRT=-99;hidT=-99;rampTs.length=0;launchT=-99;sup=false;magnet.t=0;shieldWant=false;shield.up=false;shield.hits=0;sseg.off=true;lair.guards.forEach(function(g){g.lit=false;});lair.vault.t=0;lair.flipper.a=0.5;lair.flipper.av=0;lair.flipper.pressed=false;
     st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
@@ -937,7 +937,7 @@ function makeSim(){
   var COMBO2={encore:['ENCORE!','+3,000',C.blu,C.cream],hustle:['HIDEOUT HUSTLE!','+2,500','#ff6a2b',C.deep],rally:['THREE-RAMP RALLY!','+7,500',C.yel,C.deep]};
   function tshake(a){if(calm)return;shk.t=0.32;shk.a=a;}
   function lampSweep(col,dir){if(calm)return;sw={t0:performance.now(),col:col,dir:dir||1};}
-  function say(text,spk){if(pq.length>=6)pq.shift();pq.push({t:text,s:'',c:BARON,k:INK,h:9,kind:'say',age:0,dur:2.5,rot:(Math.random()-0.5)*0.05});}
+  function say(text){if(pq.length>=6)pq.shift();pq.push({t:text,s:'',c:BARON,k:INK,h:9,kind:'say',age:0,dur:2.5,rot:(Math.random()-0.5)*0.05});}
   function taunt(){var k;do{k=(Math.random()*TAUNTS.length)|0;}while(k===lastTaunt);lastTaunt=k;say(TAUNTS[k]);}
   function pop(text,x,y,lair,col){if(pops.length>7)pops.shift();pops.push({text:text,x:x,y:y,lair:lair?1:0,col:col||C.coral,t:0.6,life:0.6,rot:(Math.random()-0.5)*0.4});}
   var charge=null,keysCharge=null;
