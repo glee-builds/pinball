@@ -82,9 +82,10 @@ function findBadNumber(v, where) {
 
 var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, lane2: 0, lane3: 0, spin: 0, drop: 0, bank: 0, orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0, ramp0: 0, ramp1: 0, rampFail: 0, relay: 0,
   missionReady: 0, missionStart: 0, missionDone: 0, missionFail: 0, wizardLit: 0, wizardStart: 0, superJackpot: 0, wizardEnd: 0,
-  lairOpen: 0, lairEnter: 0, lairExit: 0, guard: 0, vaultLit: 0, vault: 0,
-  shieldHit: 0, shieldDown: 0, magnet: 0, extraBallLit: 0, extraBall: 0, shootAgain: 0, match: 0, matchWin: 0,
-  videoLit: 0, videoStart: 0, videoHit: 0, videoComet: 0, videoEnd: 0, namedCombo: 0, superSkill: 0 };
+  lairOpen: 0, lairEnter: 0, guard: 0, vaultLit: 0, vault0: 0, vault1: 0, lairExit: 0,
+  shieldUp: 0, shieldHit: 0, shieldDown: 0, magnet: 0, extraLit: 0, extraBall: 0, shootAgain: 0, match: 0, matchWin: 0, videoLit: 0, videoStart: 0, videoHit: 0, videoDodge: 0, videoEnd: 0, chain: 0,
+  doubleRun: 0, emberRush: 0, skyway: 0, superskill: 0 };
+var VIDEO_MAX = 22;          // a video mode longer than this many simulated seconds fails
 
 function playGame(seed) {
   var sim = loadSim(seed);
@@ -93,6 +94,7 @@ function playGame(seed) {
   var seen = [];                                // balls alive after the previous step
   var track = [];                               // per-ball {ref, slow, ax, ay, trap} for the stuck checks
   var frame = 0;
+  var videoStart = -1;                          // st.time when the running video mode began
 
   function fail(msg) {
     return { ok: false, seed: seed, msg: msg + ' (t=' + st.time.toFixed(2) + 's, frame ' + frame + ')' };
@@ -109,25 +111,29 @@ function playGame(seed) {
     sim.step(DT);
     for (var ei = 0; ei < sim.events.length; ei++) {
       var ev = sim.events[ei];
-      if (ev.t === 'surprise') { if (ev.v === 'alley') EV.alley++; else if (ev.v === 'boss') EV.bossSurprise++; }
+      if (ev.t === 'surprise') { if (ev.v === 'alley') EV.alley++; else if (ev.v === 'boss') EV.bossSurprise++; else if (ev.v === 'superskill') EV.superskill++; }
+      else if (ev.t === 'combo2') EV[ev.v]++;
       else if (ev.t === 'lane') EV['lane' + ev.v]++;
       else if (ev.t === 'ramp') EV['ramp' + ev.v]++;
+      else if (ev.t === 'vault') EV['vault' + ev.v]++;
       else if (EV[ev.t] !== undefined) EV[ev.t]++;
     }
     sim.events.length = 0;
+    if (st.video) { if (videoStart < 0) videoStart = st.time; if (st.time - videoStart > VIDEO_MAX) return fail('video mode ran past ' + VIDEO_MAX + ' simulated seconds'); }
+    else videoStart = -1;
 
     var k, b, bad;
     for (k = 0; k < sim.balls.length; k++) {
       b = sim.balls[k];
       bad = findBadNumber(b, 'ball[' + k + ']');
       if (bad) return fail('NaN: ' + bad);
-      if (b.rp >= 0 || b.wp >= 0) {
+      if (b.h > 0) {
         if (b.x < 0 || b.x > 400 || b.y < sim.top || b.y > 720) {
-          return fail('ramp/wire ball out of bounds at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
+          return fail('path ball left the area at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1) + ' h=' + b.h.toFixed(2));
         }
       } else if (b.lv === 1) {
-        var L = sim.lair;
-        if (b.x < L.x0 || b.x > L.x1 || b.y < L.y0 || b.y > L.y1) {
+        var L = sim.lair, mg = sim.R - 1;
+        if (b.x < L.x0 + mg || b.x > L.x1 - mg || b.y < L.y0 + mg || b.y > L.y1 - mg) {
           return fail('lair ball left the lair at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
         }
       } else if (b.y < EXIT_Y && outsideTable(b)) {
@@ -136,7 +142,7 @@ function playGame(seed) {
     }
     // a ball the sim removed must have gone out the bottom, not the sides or top
     for (k = 0; k < seen.length; k++) {
-      if (sim.balls.indexOf(seen[k].ref) === -1 && seen[k].y < EXIT_Y) {
+      if (sim.balls.indexOf(seen[k].ref) === -1 && (seen[k].y < EXIT_Y || seen[k].lv !== 0)) {
         return fail('ball removed above y=' + EXIT_Y + ', last seen x=' + seen[k].x.toFixed(1) + ' y=' + seen[k].y.toFixed(1));
       }
     }
@@ -148,10 +154,7 @@ function playGame(seed) {
       for (j = 0; j < track.length; j++) if (track[j].ref === b) { tr = track[j]; break; }
       if (!tr) tr = { ref: b, slow: 0, ax: b.x, ay: b.y, trap: 0 };
       nextTrack.push(tr);
-      if (b.hold > 0 && st.video) {   // deliberately held during video mode
-        tr.slow = 0; tr.trap = 0; tr.ax = b.x; tr.ay = b.y;
-        continue;
-      }
+      if (st.video) continue;                  // video mode freezes every ball: stuck timers neither advance nor reset
       if (inShooterLane(b)) {
         tr.slow = 0; tr.trap = 0; tr.ax = b.x; tr.ay = b.y;
         continue;
@@ -168,16 +171,18 @@ function playGame(seed) {
       }
     }
     track = nextTrack;
-    seen = sim.balls.map(function (q) { return { ref: q, x: q.x, y: q.y }; });
+    seen = sim.balls.map(function (q) { return { ref: q, x: q.x, y: q.y, lv: q.lv }; });
 
     bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers') ||
           findBadNumber(sim.orbit, 'orbit') || findBadNumber(sim.hideout, 'hideout') ||
           findBadNumber(sim.lanes, 'lanes') || findBadNumber(sim.kickback, 'kickback') ||
-          findBadNumber(sim.spinner, 'spinner') || findBadNumber(sim.drops, 'drops') || findBadNumber(sim.ramps, 'ramps') ||
-          findBadNumber(sim.missionDefs, 'missionDefs') || findBadNumber(sim.lair, 'lair');
+          findBadNumber(sim.spinner, 'spinner') || findBadNumber(sim.drops, 'drops') || findBadNumber(sim.ramps, 'ramps') || findBadNumber(sim.lair, 'lair') ||
+          findBadNumber(sim.missionDefs, 'missionDefs') ||
+          findBadNumber(sim.shield, 'shield') || findBadNumber(sim.magnet, 'magnet') || findBadNumber(sim.videoDef, 'videoDef');
     if (bad) return fail('NaN: ' + bad);
     if (st.time > MAX_SECONDS) return fail('game still running after ' + MAX_SECONDS + ' simulated seconds');
   }
+  if (st.matchWin) EV.matchWin++;
   return { ok: true, seed: seed, score: st.score, time: st.time, bumps: st.bumps, mb: st.mbCount };
 }
 
@@ -207,9 +212,11 @@ console.log('Events over ' + GAMES + ' games: orbit ' + EV.orbit + ', hideout ' 
   ', spin ' + EV.spin + ', drop ' + EV.drop + ', bank ' + EV.bank +
   ', missionReady ' + EV.missionReady + ', missionStart ' + EV.missionStart + ', missionDone ' + EV.missionDone + ', missionFail ' + EV.missionFail +
   ', wizardLit ' + EV.wizardLit + ', wizardStart ' + EV.wizardStart + ', superJackpot ' + EV.superJackpot + ', wizardEnd ' + EV.wizardEnd +
-  ', lairOpen ' + EV.lairOpen + ', lairEnter ' + EV.lairEnter + ', lairExit ' + EV.lairExit + ', guard ' + EV.guard + ', vaultLit ' + EV.vaultLit + ', vault ' + EV.vault +
-  ', shieldHit ' + EV.shieldHit + ', shieldDown ' + EV.shieldDown + ', magnet ' + EV.magnet + ', extraBallLit ' + EV.extraBallLit + ', extraBall ' + EV.extraBall +
-  ', shootAgain ' + EV.shootAgain + ', match ' + EV.match + ', matchWin ' + EV.matchWin +
-  ', videoLit ' + EV.videoLit + ', videoStart ' + EV.videoStart + ', videoHit ' + EV.videoHit + ', videoComet ' + EV.videoComet + ', videoEnd ' + EV.videoEnd +
-  ', namedCombo ' + EV.namedCombo + ', superSkill ' + EV.superSkill + '.');
+  ', lairOpen ' + EV.lairOpen + ', lairEnter ' + EV.lairEnter + ', guard ' + EV.guard + ', vaultLit ' + EV.vaultLit +
+  ', vault0 ' + EV.vault0 + ', vault1 ' + EV.vault1 + ', lairExit ' + EV.lairExit + '.');
+console.log('Round 6 events over ' + GAMES + ' games: shieldUp ' + EV.shieldUp + ', shieldHit ' + EV.shieldHit + ', shieldDown ' + EV.shieldDown +
+  ', magnet ' + EV.magnet + ', extraLit ' + EV.extraLit + ', extraBall ' + EV.extraBall + ', shootAgain ' + EV.shootAgain +
+  ', match ' + EV.match + ', matchWin ' + EV.matchWin + ', videoLit ' + EV.videoLit + ', videoStart ' + EV.videoStart +
+  ', videoHit ' + EV.videoHit + ', videoDodge ' + EV.videoDodge + ', videoEnd ' + EV.videoEnd + ', chain ' + EV.chain +
+  ', doubleRun ' + EV.doubleRun + ', emberRush ' + EV.emberRush + ', skyway ' + EV.skyway + ', superskill ' + EV.superskill + '.');
 process.exit(failures ? 1 : 0);
