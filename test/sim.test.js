@@ -21,9 +21,7 @@
  *     for over 10 s (trapped, even if it is jiggling)
  */
 'use strict';
-var fs = require('fs');
-var path = require('path');
-var vm = require('vm');
+var helpers = require('./helpers/load');
 
 var GAMES = parseInt(process.argv[2], 10) > 0 ? parseInt(process.argv[2], 10) : 40;
 var FIRST_SEED = parseInt(process.argv[3], 10) || 1;
@@ -37,29 +35,10 @@ var TRAP_SECONDS = 10;      // trapped for longer than this fails
 
 function inShooterLane(b) { return b.x > 360 && b.y > 600; }
 
-var html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-var m = html.match(/<script id="sim">([\s\S]*?)<\/script>/);
-if (!m) { console.error('FAIL: no <script id="sim"> found in index.html'); process.exit(1); }
-var simSource = m[1];
-
-function mulberry32(seed) {
-  var a = seed >>> 0;
-  return function () {
-    a = (a + 0x6D2B79F5) >>> 0;
-    var t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function loadSim(seed) {
-  var ctx = vm.createContext({});
-  vm.runInContext(simSource, ctx, { filename: 'index.html#sim' });
-  ctx.__rand = mulberry32(seed);
-  vm.runInContext('Math.random = __rand;', ctx);
-  return vm.runInContext('makeSim()', ctx);
-}
+var simSource = helpers.extractSim(helpers.readPage());
+if (simSource === null) { console.error('FAIL: no <script id="sim"> found in index.html'); process.exit(1); }
+var mulberry32 = helpers.mulberry32;
+var loadSim = helpers.makeLoader(simSource);
 
 /* Table outline above the flippers: side walls at x = 10 and x = 390,
    closed on top by an arc of radius 190 centered on (200, 190). */
