@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node test/sim.test.js
+      - run: node --test "test/*.test.js"
 
   publish:
     # Copy main to gh-pages, the branch GitHub Pages serves. Runs only after the test passes.

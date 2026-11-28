@@ -48,6 +48,7 @@ Your top scores and records are saved in the browser on your phone. Clearing Saf
 node test/sim.test.js          # 40 seeded games
 node test/sim.test.js 200      # 200 games
 node test/sim.test.js 1 17     # replay only seed 17
+node --test "test/*.test.js"   # every test, as CI runs them
 ```
 
 By default it plays 40 seeded games with random flipper input and fails if a ball escapes the table, a value goes NaN, or a game never ends. Run it after any gameplay change.
