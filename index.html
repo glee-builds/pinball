@@ -229,7 +229,49 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             vaultLit          all 3 guards lit, st.vaultLit true
             vault v x y       ball captured by the vault; v 1 = lit jackpot (+15000, 4 damage in a showdown, guards reset), v 0 = unlit (+500); ball held lair.vault.hold s then kicked down toward the mini flipper
             (safety: a lv 1 ball that somehow gets outside the lair walls is silently put on lair.exitPath too)
-            lairExit 0 x y    lv 1 ball fell through the exit and starts riding lair.exitPath (x,y = where it left); it lands above lanes[1] as lv 0 h 0 moving down at 260 (it never drains directly) */
+            lairExit 0 x y    lv 1 ball fell through the exit and starts riding lair.exitPath (x,y = where it left); it lands above lanes[1] as lv 0 h 0 moving down at 260 (it never drains directly)
+   ROUND 6 (last rules round: shield, magnet, extra ball, match, video mode, combos). Rules plus three small data additions; no existing geometry changed.
+   exports  shield  {x0:298,y0:309,x1:356,y1:297,up,hits}  "Gloom Shield": a slanted seg across the Rooftop Run entrance (ramps[1], ey 302). Also in segs with shield:true; off:true while down (draw nothing for it, draw from this object). up true while standing; hits = hits taken so far (0..3)
+            magnet  {x:185,y:631,r:20,t}  "Tide's Undertow" catch zone just above the gap between the main flippers (x,y computed from the flipper rest tips). t = seconds a caught ball is still held (0 = empty; held ball sits at x,y)
+            videoDef  {lanes:3,t:20,maxHits:3}  Rooftop Chase constants
+            lair.vault gained rl:75  capture radius while st.vaultLit (r:22 stays the drawn saucer; a lit vault pulls balls in from farther). Diverted balls now land in the lair with a little random velocity.
+   ball     mg  true while held by the magnet (draw it pinned at magnet.x,y like a hideout ball)
+   st       magnet  true = Tide's Undertow armed (set at each ball start, incl. a shoot-again ball, once Tide has been recruited this game; false after it fires)
+            tideIn  Tide recruited at least once this game (stays true when heroes reset)
+            extraLit  extra ball lit (a Hideout capture collects it);  extra  extra balls banked (a real drain spends one: same ball number again)
+            missionsDone  missions completed this game
+            match  -1 until game over, then 0..9 (show match*10 as the two-digit match);  matchWin  true if match equals the tens digit of the final score
+            videoLit  Rooftop Chase is lit (the next Hideout capture starts it)
+            video  null or {t,x,obs,dodged,hits}  Rooftop Chase running: t seconds left (counts down from 20), x hero lane 0..2, obs [{lane 0..2,y 0..1}] falling obstacles (y 0 top, 1 = hero row), dodged, hits
+            chain  major shots in a row (ramp crest, Hideout capture, lair entry), each within 5 s of the previous; 0 after 5 s idle
+            namedCombos  named combos this game
+            mode  now also 'video' (ONE mode at a time; video never starts during mission, showdown or Last Stand)
+   rules    Gloom Shield: raised when a showdown starts (waits until no ball is within 14 units of it, so it can rise a moment later), lowered when the showdown ends. While up it is solid: the Rooftop Run entrance cannot be entered. A hit with speed into it > 90 counts: 1 showdown damage; the 3rd hit drops it (+1000).
+            Magnet: while st.magnet, a ball outside the shooter lane moving down (vy > 200) through the zone is caught, held 0.8 s (pinned, no physics) and flung up (vy about -1000, small random vx). A ball cradled on a raised flipper moves too slowly to be caught.
+            Extra ball: lit once per game, when the 1st mission is completed or the first showdown is won. Shoot again: a real drain (no saver, no lucky save) with st.extra > 0 spends one and replays the same ball number ('drain' then 'shootAgain').
+            Match: at game over, 'match' fires once, v = st.match*10.
+            Video mode: videoLit each time 2 drop banks are completed since the last video mode. A Hideout capture while lit starts it (when mode is 'none'): the captured ball stays held and EVERY other thing freezes (balls, flippers, mission/showdown/wizard/combo/saver/mystery/hideout timers, spinner, lanes). New press of setFlipper(0) = hero one lane left, setFlipper(1) = one lane right (holding does nothing); flippers do not move. Obstacles spawn at the top of a random lane about every 0.7 s and fall at 0.6 rising to 1.2 per second; reaching y >= 1 in the hero's lane is a hit, otherwise a dodge (+250). 3 hits or t = 0 ends it (+500 per dodge); then everything resumes and the Hideout kicks its ball out.
+            Hideout capture priority when several are lit: Last Stand > collect extra ball > video mode > next mission.
+            Combos: 'doubleRun' same ramp twice within 5 s (+2500), 'emberRush' Hideout capture then any ramp crest within 5 s (+3000), 'skyway' 3 ramp crests within 8 s (+6000). Team Relay is unchanged.
+            Super skill shot: ramp crest within 4 s of a plunger launch before the ball has hit any bumper (+25000).
+   events   shieldUp                 shield rose (shield.up true)
+            shieldHit n x y          counted hit, v = hits left (2, 1, then 0 with shieldDown), x,y = hit point
+            shieldDown               3rd hit: shield destroyed (+1000)
+            shieldGone               showdown ended with the shield still up: it lowers
+            magnet 0 x y             ball caught by the magnet (x,y = zone center)
+            extraLit                 extra ball lit
+            extraBall                Hideout capture collected the extra ball (st.extra + 1)
+            shootAgain               drained with an extra ball banked: same ball again (follows 'drain')
+            match v                  game over match, v = st.match*10 (0,10..90)
+            videoLit                 video mode lit
+            videoStart               Rooftop Chase began (st.video set, st.mode 'video')
+            videoMove x              hero moved to lane x
+            videoHit n               hero hit, v = hits so far
+            videoDodge n             obstacle dodged (+250), v = dodges so far
+            videoEnd n               video over, v = dodges (+500 each), st.video null, videoLit false
+            chain n x y              chain length n >= 2 (x,y = the shot)
+            combo2 name x y          named combo, v = 'doubleRun' | 'emberRush' | 'skyway' (x,y = the crest)
+            surprise 'superskill'    super skill shot banner */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
   var segs=[];
@@ -256,6 +298,8 @@ function makeSim(){
   add(360,250,390,225,{oneWay:true,nx:-25/gl,ny:-30/gl,e:0.3}); // lane gate: up only
 
   add(330,200,330,290);               // orbit rail: channel beside the shooter lane (open at both ends)
+  add(298,309,356,297,{shield:true,off:true});   // Gloom Shield: stands across the Rooftop Run entrance during a showdown
+  var sseg=segs[segs.length-1],shield={x0:298,y0:309,x1:356,y1:297,up:false,hits:0},shieldWant=false;
 
   var bumpers=[{x:130,y:255,r:22},{x:270,y:255,r:22},{x:200,y:345,r:22}];
   var targets=[{x:10,y:400,r:12,lit:false},{x:360,y:400,r:12,lit:false}];
@@ -265,13 +309,16 @@ function makeSim(){
     {px:248,py:645,len:46,side:-1,a:0.5,av:0,pressed:false}
   ];
   var REST=0.5,UP=-0.55,FS=20;
-  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,lr:0};}
+  var magnet={x:Math.round((flippers[0].px+flippers[0].len*Math.cos(REST)+flippers[1].px-flippers[1].len*Math.cos(REST))/2),y:Math.round(flippers[0].py+flippers[0].len*Math.sin(REST)-36),r:20,t:0};
+  var videoDef={lanes:3,t:20,maxHits:3},vSp=0,vb=0,extraDone=false,clk=0,chainT=0,lastRI=-1,lastRT=-99,hidT=-99,rampTs=[],launchT=-99,sup=false;
+  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,lr:0,mg:false};}
   var balls=[newBall()],ball=null;
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
           lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1,
-          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,vaultLit:false,lairVisits:0,vaults:0};
+          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,vaultLit:false,lairVisits:0,vaults:0,
+          magnet:false,tideIn:false,extraLit:false,extra:0,missionsDone:0,match:-1,matchWin:false,videoLit:false,video:null,chain:0,namedCombos:0};
   var mBanner=false;
   var missionDefs=[{i:0,hero:'Kite',name:'Sky Patrol',goal:'2 ramp crests',need:2,t:50},{i:1,hero:'Ember',name:'Fire Drill',goal:'8 bumper hits',need:8,t:35},{i:2,hero:'Tide',name:'Flood Gates',goal:'5 drop targets',need:5,t:40}];
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
@@ -298,7 +345,7 @@ function makeSim(){
   var lair={x0:90,y0:-185,x1:310,y1:-10,segs:[],
     flipper:{px:296,py:-45,len:30,side:-1,a:0.5,av:0,pressed:false},
     guards:[{i:0,x:150,y:-95,r:13,lit:false},{i:1,x:200,y:-85,r:13,lit:false},{i:2,x:250,y:-95,r:13,lit:false}],
-    vault:{x:200,y:-162,r:22,t:0,hold:1.0},
+    vault:{x:200,y:-162,r:22,rl:75,t:0,hold:1.0},
     exit:{x0:90,x1:118,y:-19},
     exitPath:[{x:108,y:-14,h:0.3},{x:80,y:0,h:0.6},{x:52,y:40,h:0.9},{x:36,y:100,h:1},{x:28,y:200,h:1},{x:26,y:330,h:1},{x:28,y:430,h:1},{x:34,y:480,h:0.6},{x:48,y:512,h:0}]};
   (function(){
@@ -316,7 +363,7 @@ function makeSim(){
     b.rs+=r.ride*dt;
     if(b.rs>=len){
       var e=P[P.length-1];b.x=e.x;b.y=e.y;b.h=0;b.rs=0;b.ru=0;b.still=0;b.ign=0.3;
-      if(b.lr===1){b.lv=1;b.vx=-90;b.vy=30;b.lr=0;st.lairVisits++;emit('lairEnter',0,b.x,b.y);}
+      if(b.lr===1){b.lv=1;b.vx=-90+(Math.random()-0.5)*90;b.vy=30+(Math.random()-0.5)*50;b.lr=0;st.lairVisits++;emit('lairEnter',0,b.x,b.y);major(b.x,b.y);}
       else{b.lv=0;b.vx=0;b.vy=260;b.lr=0;}
       return;
     }
@@ -340,7 +387,8 @@ function makeSim(){
     if(sp>VMAX){ball.vx*=VMAX/sp;ball.vy*=VMAX/sp;}
     if(v.t<=0&&ball.ign<=0&&sp<450){     // vault capture
       var vx=ball.x-v.x,vy=ball.y-v.y;
-      if(vx*vx+vy*vy<v.r*v.r){
+      var cr=st.vaultLit?v.rl:v.r;      // a lit vault pulls in balls from farther away
+      if(vx*vx+vy*vy<cr*cr){
         ball.x=v.x;ball.y=v.y;ball.vx=ball.vy=0;ball.still=0;ball.hold=v.t=v.hold;
         if(st.vaultLit){
           pts(15000);emit('vault',1,ball.x,ball.y);st.vaults++;dmg(4,ball.x,ball.y);
@@ -367,9 +415,21 @@ function makeSim(){
       dmg(3,x,y);
     }else{hit(350,'ramp');lockBall(x,y);dmg(2,x,y);}
     if(!was)recruit(0);
-    emit('ramp',r.i,x,y);relayMade(r.i,x,y);
+    emit('ramp',r.i,x,y);relayMade(r.i,x,y);major(x,y);combos(r.i,x,y);
     mStep(0,x,y);
     if(st.wiz){pts(10000);st.wiz.jack++;emit('superJackpot',st.wiz.jack,x,y);}
+  }
+  function major(x,y){                   // a major shot (ramp crest, hideout capture, lair entry): chain within 5 s
+    st.chain=chainT>0?st.chain+1:1;chainT=5;
+    if(st.chain>=2)emit('chain',st.chain,x,y);
+  }
+  function combo2(n,p,x,y){pts(p);st.namedCombos++;emit('combo2',n,x,y);}
+  function combos(i,x,y){
+    if(lastRI===i&&clk-lastRT<=5){combo2('doubleRun',2500,x,y);lastRI=-1;}else{lastRI=i;lastRT=clk;}
+    if(clk-hidT<=5){combo2('emberRush',3000,x,y);hidT=-99;}
+    rampTs.push(clk);if(rampTs.length>3)rampTs.shift();
+    if(rampTs.length===3&&clk-rampTs[0]<=8){combo2('skyway',6000,x,y);rampTs.length=0;}
+    if(sup&&clk-launchT<=4){sup=false;pts(25000);emit('surprise','superskill');}
   }
   function rampPos(b,r){return pathPos(b,r.path,r.cum);}
   function pathPos(b,P,c){               // place ball on the path at b.rs; velocity = u along the segment
@@ -418,7 +478,9 @@ function makeSim(){
     st.score=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
-    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;st.lairOpen=false;st.vaultLit=false;st.lairVisits=0;st.vaults=0;lair.guards.forEach(function(g){g.lit=false;});lair.vault.t=0;lair.flipper.a=0.5;lair.flipper.av=0;lair.flipper.pressed=false;
+    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;st.lairOpen=false;st.vaultLit=false;st.lairVisits=0;st.vaults=0;
+    st.magnet=false;st.tideIn=false;st.extraLit=false;st.extra=0;st.missionsDone=0;st.match=-1;st.matchWin=false;st.videoLit=false;st.video=null;st.chain=0;st.namedCombos=0;
+    extraDone=false;vb=0;vSp=0;clk=0;chainT=0;lastRI=-1;lastRT=-99;hidT=-99;rampTs.length=0;launchT=-99;sup=false;magnet.t=0;shieldWant=false;shield.up=false;shield.hits=0;sseg.off=true;lair.guards.forEach(function(g){g.lit=false;});lair.vault.t=0;lair.flipper.a=0.5;lair.flipper.av=0;lair.flipper.pressed=false;
     st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
   }
@@ -430,19 +492,43 @@ function makeSim(){
   function launch(p){
     var b=laneBall();if(st.over||!b)return false;
     p=Math.max(0,Math.min(1,p));
-    b.vy=-(1080+560*p);b.vx=0;if(!st.saveUsed)st.save=6;st.skill=!st.mb;emit('launch',p);return true;
+    b.vy=-(1080+560*p);b.vx=0;if(!st.saveUsed)st.save=6;st.skill=!st.mb;sup=!st.mb;launchT=clk;emit('launch',p);return true;
   }
   function recruit(i){                 // a hero joins; the full team starts the showdown
     if(st.heroes[i]||st.wiz)return;    // nobody joins during Last Stand (heroes reset when it ends)
-    st.heroes[i]=true;pts(1000);emit('hero',i);
+    st.heroes[i]=true;pts(1000);emit('hero',i);if(i===2)st.tideIn=true;
     if(st.missions[i]===0){st.missions[i]=1;st.mq.push(i);emit('missionReady',i);}
     tryBoss();
   }
-  function mode(){return st.wiz?'wizard':st.boss?'showdown':st.mission?'mission':'none';}
+  function mode(){return st.wiz?'wizard':st.boss?'showdown':st.mission?'mission':st.video?'video':'none';}
   function tryBoss(){                  // full team and nothing else running: showdown (waits behind a mission)
-    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};emit('bossStart');setLairOpen();}
+    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};emit('bossStart');setLairOpen();shieldWant=true;}
   }
-  function bossEnd(){st.boss=null;st.heroes=[false,false,false];}
+  function bossEnd(){
+    st.boss=null;st.heroes=[false,false,false];shieldWant=false;
+    if(shield.up){shield.up=false;sseg.off=true;emit('shieldGone');}
+  }
+  function chkExtra(){                 // extra ball lit once per game: 2 missions done or a showdown won
+    if(!extraDone&&(st.missionsDone>=1||st.bossWins>=1)){extraDone=true;st.extraLit=true;emit('extraLit');}
+  }
+  function videoStart(){
+    st.video={t:videoDef.t,x:1,obs:[],dodged:0,hits:0};vSp=0.4;vb=0;emit('videoStart');
+  }
+  function vidStep(dt){                // Rooftop Chase: everything else is frozen while this runs
+    var v=st.video,k,o,spd;
+    v.t-=dt;vSp-=dt;
+    if(vSp<=0){vSp+=0.7;v.obs.push({lane:(Math.random()*3)|0,y:0});}
+    spd=0.6+0.6*(1-Math.max(0,v.t)/videoDef.t);
+    for(k=v.obs.length-1;k>=0;k--){
+      o=v.obs[k];o.y+=spd*dt;
+      if(o.y>=1){
+        v.obs.splice(k,1);
+        if(o.lane===v.x){v.hits++;emit('videoHit',v.hits);}
+        else{v.dodged++;pts(250);emit('videoDodge',v.dodged);}
+      }
+    }
+    if(v.hits>=videoDef.maxHits||v.t<=0){pts(v.dodged*500);emit('videoEnd',v.dodged);st.video=null;st.videoLit=false;vb=0;}
+  }
   function chkWiz(){                   // Last Stand earned: 3 missions done and a showdown won
     if(!st.wiz&&!st.wizLit&&st.bossWins>=1&&st.missions[0]===3&&st.missions[1]===3&&st.missions[2]===3){st.wizLit=true;emit('wizardLit');}
   }
@@ -451,7 +537,7 @@ function makeSim(){
     if(!m||m.i!==i)return;
     m.n++;emit('missionStep',m.n,x,y);
     if(m.n>=m.need){
-      pts(8000);st.missions[i]=3;st.mission=null;emit('missionDone',i);
+      pts(8000);st.missions[i]=3;st.mission=null;st.missionsDone++;emit('missionDone',i);chkExtra();
       if(!mBanner){mBanner=true;emit('surprise','mission');}
       tryBoss();chkWiz();
     }
@@ -471,7 +557,7 @@ function makeSim(){
   function dmg(n,x,y){                 // hit Baron Gloom
     if(!st.boss)return;
     st.boss.hp-=n;emit('bossHit',Math.max(0,st.boss.hp),x,y);
-    if(st.boss.hp<=0){pts(25000);emit('bossWin');emit('surprise','boss');st.bossWins++;bossEnd();tryBoss();chkWiz();}
+    if(st.boss.hp<=0){pts(25000);emit('bossWin');emit('surprise','boss');st.bossWins++;bossEnd();chkExtra();tryBoss();chkWiz();}
   }
   function award(){                    // a mystery prize (the star clears itself)
     var list=['bonus','mult','frenzy','moon','extra','saver','gold'],p=list[(Math.random()*list.length)|0];
@@ -513,9 +599,14 @@ function makeSim(){
     if(vn<0){
       ball.vx-=(1+s.e)*vn*nx;ball.vy-=(1+s.e)*vn*ny;
       if(s.kick&&-vn>70){ball.vx+=nx*s.kick;ball.vy+=ny*s.kick;hit(25,'sling');emit('sling',0,ball.x,ball.y);}
+      else if(s.shield&&-vn>90){
+        shield.hits++;emit('shieldHit',3-shield.hits,ball.x,ball.y);
+        if(shield.hits>=3){shield.up=false;s.off=true;emit('shieldDown');hit(1000,'shield');}else hit(150,'shield');
+        dmg(1,ball.x,ball.y);
+      }
       else if(s.drop!==undefined&&-vn>90){
         s.off=true;drops[s.drop].down=true;hit(200,'drop');emit('drop',s.drop,ball.x,ball.y);dmg(1,ball.x,ball.y);mStep(2,ball.x,ball.y);
-        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');setLairOpen();dmg(3,ball.x,ball.y);}
+        if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;if(++vb>=2&&!st.videoLit){st.videoLit=true;emit('videoLit');}st.bankT=1.5;rising=true;emit('bank');setLairOpen();dmg(3,ball.x,ball.y);}
       }
       else if(-vn>220)emit('wall',-vn);
     }
@@ -530,7 +621,7 @@ function makeSim(){
       if(kind==='bumper'){
         var out=ball.vx*nx+ball.vy*ny;
         if(out<520){ball.vx+=nx*(520-out);ball.vy+=ny*(520-out);}
-        st.bumps++;hit(100*(st.frenzy>0?5:1),'bumper');emit('bumper',idx,c.x,c.y);dmg(1,c.x,c.y);mStep(1,c.x,c.y);
+        sup=false;st.bumps++;hit(100*(st.frenzy>0?5:1),'bumper');emit('bumper',idx,c.x,c.y);dmg(1,c.x,c.y);mStep(1,c.x,c.y);
         if(st.bumps%40===0){pts(10000);emit('surprise','comet');}
       }else if(kind==='guard'){
         if(-vn>90)guardHit(c);
@@ -558,6 +649,7 @@ function makeSim(){
   }
   function sub(dt){
     var k,f,bi,b;
+    if(st.video){vidStep(dt);st.mode=mode();return;}   // video mode: flippers, balls and every timer stand still
     for(k=0;k<3;k++){
       f=k<2?flippers[k]:lair.flipper;
       var target=f.pressed?UP:REST,old=f.a;
@@ -565,6 +657,18 @@ function makeSim(){
       f.av=(f.a-old)/dt;
     }
     if(st.over)return;
+    clk+=dt;
+    if(chainT>0){chainT-=dt;if(chainT<=0){chainT=0;st.chain=0;}}
+    if(shieldWant&&!shield.up){          // raise the Gloom Shield once no ball is within 14 units of it
+      var clr0=true;
+      for(bi=0;bi<balls.length;bi++){
+        var sb=balls[bi],sdx=shield.x1-shield.x0,sdy=shield.y1-shield.y0,sd=((sb.x-shield.x0)*sdx+(sb.y-shield.y0)*sdy)/(sdx*sdx+sdy*sdy);
+        sd=sd<0?0:sd>1?1:sd;
+        var sx0=sb.x-(shield.x0+sdx*sd),sy0=sb.y-(shield.y0+sdy*sd);
+        if(sb.lv===0&&sx0*sx0+sy0*sy0<14*14)clr0=false;
+      }
+      if(clr0){shieldWant=false;shield.up=true;shield.hits=0;sseg.off=false;emit('shieldUp');}
+    }
     for(k=0;k<4;k++)if(lanes[k].t>0)lanes[k].t=Math.max(0,lanes[k].t-dt);
     if(st.rampT>0)st.rampT=Math.max(0,st.rampT-dt);
     if(spinner.av!==0){                // spinner: spin down, score each half turn
@@ -608,6 +712,11 @@ function makeSim(){
       if(ball.ign>0)ball.ign-=dt;if(ball.ob>0)ball.ob-=dt;if(ball.ot>0)ball.ot-=dt;
       if(ball.hold>0){                 // held in the hideout: pinned, no physics
         ball.hold-=dt;
+        if(ball.mg){                   // held by the magnet, then flung up
+          magnet.t=Math.max(0,ball.hold);
+          if(ball.hold>0)continue;
+          magnet.t=0;ball.hold=0;ball.mg=false;ball.ign=0.6;ball.vx=(Math.random()-0.5)*160;ball.vy=-1000;
+        }else
         if(ball.lv===1){
           lair.vault.t=Math.max(0,ball.hold);
           if(ball.hold>0)continue;
@@ -631,6 +740,13 @@ function makeSim(){
       hitFlipper(flippers[0]);hitFlipper(flippers[1]);
       var sp=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
       if(sp>VMAX){ball.vx*=VMAX/sp;ball.vy*=VMAX/sp;}
+      if(st.magnet&&ball.x<360&&ball.vy>200){   // Tide's Undertow: a ball falling through the zone is caught (a ball cradled on a flipper moves too slowly down)
+        var mgx=ball.x-magnet.x,mgy=ball.y-magnet.y;
+        if(mgx*mgx+mgy*mgy<magnet.r*magnet.r){
+          ball.x=magnet.x;ball.y=magnet.y;ball.vx=ball.vy=0;ball.still=0;ball.mg=true;ball.hold=magnet.t=0.8;st.magnet=false;
+          emit('magnet',0,ball.x,ball.y);continue;
+        }
+      }
       for(k=0;k<2;k++){                 // ramp entrances: cross the line going up, fast enough
         var rm=ramps[k];
         if(ball.x>rm.ex0&&ball.x<rm.ex1&&py>=rm.ey&&ball.y<rm.ey&&-ball.vy>=rm.min){
@@ -663,13 +779,17 @@ function makeSim(){
         var hx=ball.x-hideout.x,hy=ball.y-hideout.y;
         if(hx*hx+hy*hy<hideout.r*hideout.r){
           ball.x=hideout.x;ball.y=hideout.y;ball.vx=ball.vy=0;ball.still=0;ball.hold=hideout.t=hideout.hold;
-          var was2=st.boss!==null,pick=-1;
-          if(mode()==='none'&&st.wizLit)wizStart();   // Last Stand first: this capture must not also lock a ball
-          hit(300,'hideout');emit('hideout',0,ball.x,ball.y);
+          var was2=st.boss!==null,pick=-1,wz=false;
+          if(mode()==='none'&&st.wizLit){wizStart();wz=true;}   // Last Stand first: this capture must not also lock a ball
+          hit(300,'hideout');emit('hideout',0,ball.x,ball.y);major(ball.x,ball.y);hidT=clk;
           if(st.hideCd<=0){award();st.hideCd=20;}
           lockBall(ball.x,ball.y);
           dmg(2,ball.x,ball.y);if(!was2)recruit(1);
-          if(mode()==='none'){if(st.mq.length)pick=st.mq.shift();if(pick>=0){st.missions[pick]=2;st.mission={i:pick,n:0,need:missionDefs[pick].need,t:missionDefs[pick].t};emit('missionStart',pick);}}
+          if(!wz){                     // priority: Last Stand > extra ball > video mode > next mission
+            if(st.extraLit){st.extraLit=false;st.extra++;emit('extraBall');}
+            else if(st.videoLit&&mode()==='none')videoStart();
+            else if(mode()==='none'){if(st.mq.length)pick=st.mq.shift();if(pick>=0){st.missions[pick]=2;st.mission={i:pick,n:0,need:missionDefs[pick].need,t:missionDefs[pick].t};emit('missionStart',pick);}}
+          }
           continue;
         }
       }
@@ -709,16 +829,23 @@ function makeSim(){
       else if(!st.luckyUsed&&Math.random()<0.15){st.luckyUsed=true;placeBall();emit('surprise','lucky');}
       else{
         st.luckyUsed=false;st.frenzy=0;st.gold=0;st.lowG=0;st.mystery=null;
-        st.ball++;st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
-        if(st.ball>3){st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();emit('over');}
-        else{placeBall();st.kick=true;resetBank();emit('drain');setLairOpen();}
+        var again=st.extra>0;               // extra ball: same ball number again
+        if(again)st.extra--;else st.ball++;
+        st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
+        if(!again&&st.ball>3){
+          st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();emit('over');
+          st.match=(Math.random()*10)|0;st.matchWin=st.match===(Math.floor(st.score/10)%10);emit('match',st.match*10);
+        }
+        else{placeBall();st.kick=true;resetBank();emit('drain');if(again)emit('shootAgain');setLairOpen();st.magnet=st.tideIn;}
       }
     }
     st.mode=mode();
   }
   function step(dt){if(dt>0.034)dt=0.034;var h=dt/SUB;for(var k=0;k<SUB;k++)sub(h);st.time+=dt;}
-  function setFlipper(k,on){if(k===1)lair.flipper.pressed=on;if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
-  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,top:top,lair:lair,missionDefs:missionDefs,flippers:flippers,balls:balls,st:st,events:events,
+  function setFlipper(k,on){
+    if(st.video&&on&&!flippers[k].pressed){var v=st.video;v.x=k===0?Math.max(0,v.x-1):Math.min(videoDef.lanes-1,v.x+1);emit('videoMove',v.x);}   // video mode: a new press moves the hero one lane
+    if(k===1)lair.flipper.pressed=on;if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
+  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,top:top,lair:lair,missionDefs:missionDefs,shield:shield,magnet:magnet,videoDef:videoDef,flippers:flippers,balls:balls,st:st,events:events,
           step:step,launch:launch,inLane:inLane,newGame:newGame,setFlipper:setFlipper,tip:tip};
 }
 </script>
