@@ -16,11 +16,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node test/sim.test.js
+      - run: node --test "test/*.test.js"
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: node test/smoke.mjs
 
   publish:
     # Copy main to gh-pages, the branch GitHub Pages serves. Runs only after the test passes.
-    needs: test
+    needs: [test, smoke]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
