@@ -311,7 +311,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             chain  major shots in a row (ramp crest, Hideout capture, lair entry), each within 5 s of the previous; 0 after 5 s idle
             namedCombos  named combos this game
             mode  now also 'video' (ONE mode at a time; video never starts during mission, showdown or Last Stand)
-   rules    Gloom Shield: raised when a showdown starts (waits until no ball is within 14 units of it, so it can rise a moment later), lowered when the showdown ends. While up it is solid: the Rooftop Run entrance cannot be entered. A hit with speed into it > 90 counts: +250 and 1 showdown damage; the 3rd hit drops it.
+   rules    Gloom Shield: raised when a showdown starts (waits until no ball is within 14 units of it, so it can rise a moment later), lowered when the showdown ends. While up it is solid: the Rooftop Run entrance cannot be entered. A ball coming down the channel from above passes through without counting. A hit with speed into it > 90 counts: +250 and 1 showdown damage; the 3rd hit drops it.
             Magnet: while st.magnet, with one ball in play (no multiball) and the ball saver off, a ball outside the shooter lane moving down (vy > 200) through the zone is caught, held 0.8 s (pinned, no physics) and flung up (vy about -1000, small random vx). A ball cradled on a raised flipper moves too slowly to be caught.
             Extra ball: lit by the 2nd drop bank of the game and by the 1st vault jackpot, each once (a trigger that finds it already lit is used up). Shoot again: a real drain (no saver, no lucky save) with st.extra > 0 spends one and replays the same ball number ('drain' then 'shootAgain').
             Match: at game over, 'match' fires once, v = st.match*10.
@@ -652,6 +652,7 @@ function makeSim(){
       if(d<=0||d>=R||vn>=0)return;
       nx=s.nx;ny=s.ny;pen=R-d;
     }else{
+      if(s.shield&&t>=0&&t<=1&&((ball.x-s.x1)*12+(ball.y-s.y1)*58)<0&&ball.vx*12+ball.vy*58>=0)return;   // Gloom Shield: a ball coming down the channel from above passes through (normal 12,58 points down)
       t=t<0?0:t>1?1:t;
       var ox=ball.x-(s.x1+dx*t),oy=ball.y-(s.y1+dy*t),dd=Math.sqrt(ox*ox+oy*oy);
       if(dd>=R)return;
