@@ -15,13 +15,35 @@
  */
 const test = require('node:test');
 const assert = require('node:assert');
-const { readPage, extractSim, mulberry32, makeLoader } = require('./helpers/load');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 
 const DT = 1 / 60;
 
-const simSource = extractSim(readPage());
-assert.ok(simSource !== null, 'no <script id="sim"> found in index.html');
-const loadSim = makeLoader(simSource);
+const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const m = html.match(/<script id="sim">([\s\S]*?)<\/script>/);
+assert.ok(m, 'no <script id="sim"> found in index.html');
+const simSource = m[1];
+
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function loadSim(seed) {
+  const ctx = vm.createContext({});
+  vm.runInContext(simSource, ctx, { filename: 'index.html#sim' });
+  ctx.__rand = mulberry32(seed);
+  vm.runInContext('Math.random = __rand;', ctx);
+  return vm.runInContext('makeSim()', ctx);
+}
 
 function findBadNumber(v, where) {
   if (typeof v === 'number') return isFinite(v) ? null : where + ' = ' + v;
@@ -46,6 +68,9 @@ function busy(b) { return b.hold > 0 || b.rp >= 0 || b.lr > 0; }
 function newGame(seed) {
   const sim = loadSim(seed);
   sim.newGame();
+  // SETUP ONLY: the lair starts lit on every ball, so a ramp crest would carry the ball
+  // up to the lair. These scenarios test main-table rules, so close it.
+  sim.st.lairOpen = false;
   return { sim: sim, st: sim.st, log: [], active: null, park: true };
 }
 
@@ -93,7 +118,7 @@ function freeBall(g) {                      // waits out a Hideout hold if every
 }
 function put(b, x, y, vx, vy) {
   b.x = x; b.y = y; b.vx = vx || 0; b.vy = vy || 0;
-  b.ign = 0; b.hold = 0; b.still = 0; b.h = 0; b.mg = false;
+  b.ign = 0; b.hold = 0; b.still = 0; b.h = 0; b.mg = false; b.lv = 0; b.lr = 0;
 }
 
 /* Precondition switches shared by the mode tests. */
@@ -122,6 +147,9 @@ function capture(g) {                       // slow ball dropped on the Hideout 
 }
 function rampShot(g, i) {                   // fast ball crossing the entrance line upward
   const r = g.sim.ramps[i], b = freeBall(g), mark = g.log.length;
+  // SETUP ONLY: a showdown or a drop bank lights the lair, and a lit lair would carry
+  // this shot upstairs. Main-table scenarios close it; lairJackpot() tests the lair.
+  g.st.lairOpen = false;
   put(b, (r.ex0 + r.ex1) / 2, r.ey + 4, 0, -(r.min + 400));
   g.active = b;
   runUntil(g, function () { return evs(g, 'ramp', mark).some(function (e) { return e.v === i; }); }, 3, 'ramp ' + i + ' crest');
@@ -188,13 +216,59 @@ function winShowdown(g) {                   // real bumper hits until the boss f
   return mark;
 }
 
-/* Everything up to Last Stand being lit: a showdown win, then all three missions. */
+/* A lair visit that earns the vault jackpot: in through a ramp, the guards lit by real
+   hits, a lair flipper shot into the lit vault, then out through the exit. */
+function lairJackpot(g) {
+  const sim = g.sim, L = sim.lair, r = sim.ramps[0], b = freeBall(g), lv = g.st.lairLv;
+  let mark = g.log.length;
+  g.st.lairOpen = true;                     // SETUP ONLY: the lair is lit (it is at every ball start)
+  put(b, (r.ex0 + r.ex1) / 2, r.ey + 4, 0, -(r.min + 400));
+  g.active = b;
+  runUntil(g, function () { return evs(g, 'lairEnter', mark).length > 0; }, 6, 'lairEnter');
+  assert.strictEqual(b.lv, 1, 'ball is in the lair');
+  for (let k = 0; k < 3; k++) {             // ball dropped onto each guard
+    const q = L.guards[k];
+    put(b, q.x, q.y - 40, 0, 420); b.lv = 1;
+    runUntil(g, function () { return q.lit; }, 2, 'guard ' + k);
+  }
+  assert.strictEqual(g.st.vaultLit, true, 'three guards light the vault');
+  // A lit vault ignores a ball that no lair flipper shot.
+  put(b, L.vault.x, L.vault.y, 0, 0); b.lv = 1; b.ft = -99;
+  frame(g);
+  assert.strictEqual(evs(g, 'vault', mark).length, 0, 'lit vault must not take an unflipped ball');
+  // A real lair flipper hit, then SETUP ONLY: carry that ball to the vault mouth, slow.
+  const f = L.flippers[1];
+  put(b, f.px - 30, f.py - 14, 0, 60); b.lv = 1;
+  sim.setFlipper(1, true);
+  runUntil(g, function () { return b.vy < -200; }, 1, 'the lair flipper to hit the ball');
+  sim.setFlipper(1, false);
+  mark = g.log.length;
+  b.x = L.vault.x; b.y = L.vault.y + 10; b.vx = 0; b.vy = -40;
+  runUntil(g, function () { return evs(g, 'vault', mark).length > 0; }, 1, 'the vault jackpot');
+  assert.strictEqual(evs(g, 'vault', mark)[0].v, 1, 'jackpot, not an unlit capture');
+  assert.strictEqual(g.st.lairLv, Math.min(lv + 1, 3), 'a jackpot raises the lair level');
+  assert.ok(L.guards.every(function (q) { return !q.lit; }), 'guards reset after a jackpot');
+  run(g, L.vault.hold + 0.2);
+  mark = g.log.length;
+  put(b, 185, 712, 0, 300); b.lv = 1; g.st.lairT = 9;   // SETUP ONLY: past the quick lair save
+  runUntil(g, function () { return evs(g, 'lairExit', mark).length > 0; }, 2, 'lairExit');
+  runUntil(g, function () { return b.lr === 0 && b.lv === 0; }, 6, 'the ride back down');
+  g.active = null;
+}
+
+/* Everything up to Last Stand being lit: a showdown win, a lair jackpot, then all three missions. */
 function reachWizardLit(g) {
   quiet(g);
   startShowdown(g);
   waitHideoutFree(g);
   winShowdown(g);
   assert.strictEqual(g.st.bossWins, 1);
+  lairJackpot(g);
+  assert.strictEqual(g.st.lairLv, 2);
+  // The first vault jackpot lights the extra ball, and the Hideout collects that first.
+  assert.strictEqual(g.st.extraLit, true);
+  const xm = capture(g);
+  assert.strictEqual(evs(g, 'extraBall', xm).length, 1);
   // The three heroes are "ready" in the order they were recruited: Kite, Tide, Ember.
   assert.deepStrictEqual(Array.from(g.st.mq), [0, 2, 1]);
   const defs = g.sim.missionDefs;
@@ -255,7 +329,8 @@ function snapshot(sim) {
     st: st,
     guards: sim.lair.guards.map(function (q) { return q.lit; }),
     vaultT: sim.lair.vault.t,
-    lairFlipper: { a: sim.lair.flipper.a, av: sim.lair.flipper.av, pressed: sim.lair.flipper.pressed },
+    lairFlippers: sim.lair.flippers.map(function (f) { return { a: f.a, av: f.av, pressed: f.pressed }; }),
+    beacon: { on: sim.beacon.on, t: sim.beacon.t },
     shield: { up: sim.shield.up, hits: sim.shield.hits },
     drops: sim.drops.map(function (d) { return d.down; }),
     segsOff: sim.segs.map(function (s) { return !!s.off; }),
@@ -285,12 +360,13 @@ test('1. newGame resets state and mutable geometry to a fresh sim', function () 
   sim.targets[1].lit = true;
   sim.hideout.t = 0.5;
   sim.magnet.t = 0.4;
+  sim.beacon.on = false; sim.beacon.t = 5;
   sim.spinner.a = 1; sim.spinner.av = 5;
   const st = g.st;
   st.lockLit = true; st.locks = 1; st.banks = 2; st.extraLit = true; st.extra = 1;
   st.wizLit = true; st.wizards = 2; st.missions = [3, 2, 1]; st.mq = [1, 2];
   st.heroes = [true, true, false]; st.bossWins = 2; st.videoLit = true; st.vaultLit = true;
-  st.lairOpen = true; st.magnet = true; st.tideIn = true; st.mode = 'wizard'; st.chain = 4;
+  st.lairOpen = false; st.lairLv = 3; st.thrones = 4; st.loops = 3; st.magnet = true; st.tideIn = true; st.mode = 'wizard'; st.chain = 4;
 
   sim.newGame();
   const fresh = loadSim(99);
