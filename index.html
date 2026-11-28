@@ -43,6 +43,7 @@ body{
   color:var(--felt-deep);background:var(--brass);border:0;border-radius:6px;padding:6px 10px;white-space:nowrap;
 }
 .snd[aria-pressed="false"]{background:transparent;color:var(--brass);box-shadow:inset 0 0 0 2px var(--brass)}
+.rld{background:transparent;color:var(--brass);box-shadow:inset 0 0 0 2px var(--brass);margin-right:8px}
 button:focus-visible{outline:3px solid var(--mint);outline-offset:2px}
 .stage{position:relative;flex:1;min-height:0}
 canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
@@ -100,6 +101,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
     <span>Lock <b id="lock">0</b>/2</span>
     <span>Best <b id="best">0</b></span>
   </div>
+  <button class="snd rld" id="rld" type="button" aria-label="Reload the game to get the latest version">Reload</button>
   <button class="snd" id="snd" type="button" aria-pressed="true">Sound on</button>
   <canvas id="hud" role="img" aria-label="The Alley Guard heroes and Baron Gloom health"></canvas>
 </div>
@@ -675,6 +677,10 @@ function makeSim(){
   el('snd').addEventListener('click',function(){
     soundOn=!soundOn;this.setAttribute('aria-pressed',soundOn?'true':'false');this.textContent=soundOn?'Sound on':'Sound off';
     if(soundOn){initAudio();wake();beep(660,0.08,'square',0.07);}
+  });
+  el('rld').addEventListener('click',function(){
+    if(!sim.st.over&&!confirm('Reload the game? The current game will end. Your records are kept.'))return;
+    location.replace(location.pathname+'?v='+Date.now());
   });
 
   /* ---------- layout ---------- */
