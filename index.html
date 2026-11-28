@@ -141,13 +141,27 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             banks    drop banks completed this game
             bankT    seconds until a completed bank stands back up (0 = idle)
    events   lockLit              both side targets lit, lock is now lit
-            lock n x y           while lockLit (not multiball) a Hideout capture OR a scored Rooftop Run orbit shot locks a ball; v = count after this lock (1, then 2); the 2nd is followed by 'multiball'
+            lock n x y           while lockLit (not multiball) a Hideout capture OR a scored Rooftop Run OR Skyline Ramp crest locks a ball; v = count after this lock (1, then 2); the 2nd is followed by 'multiball'
             multiball            Team-Up Multiball started (after 2 locks)
             lane i x y           ball rolled over lane sensor i (i as lanes); outlane scores 500 only if the ball then drains
             kickback 0 x y       left outlane kicked the ball back up the channel
             spin 0 x y           spinner turned another half turn (max 12 per second)
             drop i x y           drop target i knocked down
-            bank                 all 3 drop targets down (+3000), they stand up 1.5 s later once no ball is on them */
+            bank                 all 3 drop targets down (+3000), they stand up 1.5 s later once no ball is on them
+   ROUND 3 (second level: two raised ramps with wire returns). A ball with h > 0 is ABOVE the playfield: draw it (and its shadow on the table) over everything else.
+   exports  ramps  [{i,name,ex0,ex1,ey entrance line (x-range, y); path:[{x,y,h}] h 0 at entrance, 1 at crest, ~1 on the wire, 0 at exit; crest = index into path;
+                    exit:{x,y,vx,vy} where the ball lands on the playfield; len path length; min entry speed; dec climb decel; ride wire speed}]
+                   i 0 "Skyline Ramp" (left, exit above lanes[1]), i 1 "Rooftop Run" (right, up the old orbit channel, exit above lanes[2]).
+                   All path points are inside x 16..384. Ramps are not in segs: the UI draws them from path.
+   ball     h  0 on the playfield, 0..1 on a ramp (draw over everything when > 0);  rp  -1 or the ramp index i the ball is on;
+            rs  distance along path;  ru  speed along path (negative = rolling back after a failed climb);  rc  true once past the crest.
+            A ramp ball has no collisions, gravity or nudge; x,y,vx,vy follow the path. It still counts as a live ball in play.
+   st       relays  Team Relay count this game;  rampT  seconds left of the relay window (0 = none);  rampLast  ramp index last made (-1 none)
+   events   ramp i x y          ball made the crest of ramp i (the scored shot; x,y = crest point). EITHER ramp crest recruits Kite (hero 0) unless a showdown was already running, and while lockLit (not multiball) EITHER ramp crest locks a ball ('lock')
+            rampFail i x y      weak shot: ball stalled on the way up and rolled back out of the entrance (x,y = entrance)
+            relay 0 x y         Team Relay: the other ramp made within 6 s of the last one (+1500)
+            orbit 1 x y         CHANGED: now fires when ball makes the Rooftop Run crest (same awards as before), together with 'ramp' 1.
+                                The old bottom/top sensors no longer score; only the reverse run (top to bottom, 'alley') still uses orbit.by/ty. */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
   var segs=[];
@@ -183,18 +197,69 @@ function makeSim(){
     {px:248,py:645,len:46,side:-1,a:0.5,av:0,pressed:false}
   ];
   var REST=0.5,UP=-0.55,FS=20;
-  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1};}
+  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false};}
   var balls=[newBall()],ball=null;
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
-          lockLit:false,locks:0,kick:true,banks:0,bankT:0};
+          lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1};
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
   var kickback={x:23,y1:520,y2:590};
   var spinner={x:345,y:300,w:13,a:0,av:0},spAcc=0,spCd=0;
   var rising=false;
   var orbit={x:330,y1:200,y2:290,x0:332,x1:358,by:275,ty:215};
   var hideout={x:62,y:300,r:13,t:0,hold:1.0};
+  var RIDE=340,LMIN=500,LDEC=800,RMIN=350,RDEC=1500;
+  function mkRamp(o){                  // precompute cumulative lengths; h comes from the path points
+    var c=[0],k;
+    for(k=1;k<o.path.length;k++){var a=o.path[k-1],b=o.path[k];c.push(c[k-1]+Math.sqrt((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y)));}
+    o.cum=c;o.len=c[c.length-1];o.cs=c[o.crest];o.ride=RIDE;return o;
+  }
+  var ramps=[
+    mkRamp({i:0,name:'Skyline Ramp',ex0:118,ex1:152,ey:408,min:LMIN,dec:LDEC,crest:4,exit:{x:48,y:512,vx:0,vy:260},
+      path:[{x:135,y:408,h:0},{x:138,y:360,h:0.3},{x:112,y:310,h:0.6},{x:74,y:272,h:0.85},{x:40,y:250,h:1},{x:30,y:268,h:1},{x:25,y:296,h:1},{x:24,y:340,h:1},{x:25,y:400,h:1},{x:30,y:455,h:0.8},{x:40,y:495,h:0.4},{x:48,y:512,h:0}]}),
+    mkRamp({i:1,name:'Rooftop Run',ex0:298,ex1:358,ey:302,min:RMIN,dec:RDEC,crest:3,exit:{x:322,y:505,vx:0,vy:260},
+      path:[{x:336,y:302,h:0},{x:345,y:270,h:0.35},{x:345,y:240,h:0.75},{x:345,y:212,h:1},{x:338,y:196,h:1},{x:329,y:192,h:1},{x:322,y:200,h:1},{x:322,y:260,h:1},{x:322,y:350,h:1},{x:322,y:440,h:0.9},{x:322,y:480,h:0.5},{x:322,y:505,h:0}]})
+  ];
+  function relayMade(i,x,y){             // a ramp was made: second different ramp inside the window is a Team Relay
+    if(st.rampT>0&&st.rampLast!==i&&st.rampLast>=0){pts(1500);emit('relay',0,x,y);st.relays++;}
+    st.rampLast=i;st.rampT=6;
+  }
+  function rampMade(b,r){
+    var x=b.x,y=b.y,was=st.boss!==null;
+    if(r.i===1){
+      hit(400,'orbit');emit('orbit',1,x,y);
+      if(st.mb){pts(5000);emit('jackpot');}
+      lockBall(x,y);
+      dmg(3,x,y);
+    }else{hit(350,'ramp');lockBall(x,y);dmg(2,x,y);}
+    if(!was)recruit(0);
+    emit('ramp',r.i,x,y);relayMade(r.i,x,y);
+  }
+  function rampPos(b,r){                 // place ball on the path at b.rs; velocity = u along the segment
+    var c=r.cum,P=r.path,k=1,s=b.rs;
+    while(k<c.length-1&&s>c[k])k++;
+    var a=P[k-1],e=P[k],sl=c[k]-c[k-1],t=sl>0?(s-c[k-1])/sl:0;
+    t=t<0?0:t>1?1:t;
+    b.x=a.x+(e.x-a.x)*t;b.y=a.y+(e.y-a.y)*t;b.h=a.h+(e.h-a.h)*t;
+    if(sl>0){b.vx=(e.x-a.x)/sl*b.ru;b.vy=(e.y-a.y)/sl*b.ru;}
+  }
+  function rampStep(b,dt){
+    var r=ramps[b.rp];
+    if(!b.rc){b.ru-=r.dec*dt;if(b.ru<-900)b.ru=-900;}
+    b.rs+=b.ru*dt;
+    if(b.rs<=0){                       // stalled and rolled back: out of the entrance, moving away
+      var p0=r.path[0];
+      b.x=p0.x;b.y=r.ey+14;b.vx=0;b.vy=160;b.h=0;b.rp=-1;b.rs=0;b.ru=0;b.rc=false;b.still=0;
+      emit('rampFail',r.i,p0.x,r.ey);return;
+    }
+    if(!b.rc&&b.rs>=r.cs){b.rc=true;b.ru=r.ride;b.rs=r.cs;rampPos(b,r);rampMade(b,r);}
+    if(b.rs>=r.len){                   // wire end: back on the playfield with the exit velocity
+      var ex=r.exit;
+      b.x=ex.x;b.y=ex.y;b.vx=ex.vx;b.vy=ex.vy;b.h=0;b.rp=-1;b.rs=0;b.ru=0;b.rc=false;b.still=0;b.ign=0.3;return;
+    }
+    rampPos(b,r);
+  }
   var SPOTS=[[200,222],[75,340],[325,340],[120,430],[280,430]];
   var events=[];
   function emit(t,v,x,y){events.push({t:t,v:v,x:x,y:y});}
@@ -212,7 +277,7 @@ function makeSim(){
     st.score=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
-    st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
+    st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
   }
   function laneBall(){
@@ -327,6 +392,7 @@ function makeSim(){
     }
     if(st.over)return;
     for(k=0;k<4;k++)if(lanes[k].t>0)lanes[k].t=Math.max(0,lanes[k].t-dt);
+    if(st.rampT>0)st.rampT=Math.max(0,st.rampT-dt);
     if(spinner.av!==0){                // spinner: spin down, score each half turn
       spinner.a+=spinner.av*dt;spAcc+=Math.abs(spinner.av)*dt;spinner.av*=1-1.5*dt;if(Math.abs(spinner.av)<1)spinner.av=0;
       if(spCd>0)spCd-=dt;
@@ -369,6 +435,7 @@ function makeSim(){
         if(ball.hold>0)continue;
         hideout.t=0;ball.hold=0;ball.ign=0.6;ball.vx=300+Math.random()*80;ball.vy=-150+Math.random()*200;
       }
+      if(ball.rp>=0){rampStep(ball,dt);continue;}   // on a ramp: no physics, just the path
       var py=ball.y;
       ball.vy+=G*(st.lowG>0?0.55:1)*dt;
       ball.vx*=1-0.04*dt;ball.vy*=1-0.04*dt;
@@ -379,15 +446,16 @@ function makeSim(){
       hitFlipper(flippers[0]);hitFlipper(flippers[1]);
       var sp=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
       if(sp>VMAX){ball.vx*=VMAX/sp;ball.vy*=VMAX/sp;}
-      if(ball.x>orbit.x0&&ball.x<orbit.x1){   // orbit sensors
-        if(py>=orbit.by&&ball.y<orbit.by&&ball.vy<0){ball.ob=2;ball.ot=0;}
-        if(py>=orbit.ty&&ball.y<orbit.ty&&ball.vy<0&&ball.ob>0){
-          ball.ob=0;var was=st.boss!==null;
-          hit(400,'orbit');emit('orbit',1,ball.x,ball.y);
-          if(st.mb){pts(5000);emit('jackpot');}
-          lockBall(ball.x,ball.y);
-          dmg(3,ball.x,ball.y);if(!was)recruit(0);
+      for(k=0;k<2;k++){                 // ramp entrances: cross the line going up, fast enough
+        var rm=ramps[k];
+        if(ball.x>rm.ex0&&ball.x<rm.ex1&&py>=rm.ey&&ball.y<rm.ey&&-ball.vy>=rm.min){
+          ball.rp=k;ball.rs=0;ball.ru=Math.min(-ball.vy,VMAX);ball.rc=false;ball.ob=ball.ot=0;
+          if(k===1)spinner.av=0.05*ball.ru;
+          rampPos(ball,rm);break;
         }
+      }
+      if(ball.rp>=0)continue;
+      if(ball.x>orbit.x0&&ball.x<orbit.x1){   // reverse run through the channel (top to bottom): the 'alley' secret
         if(py<orbit.ty&&ball.y>=orbit.ty&&ball.vy>0){ball.ot=2;ball.ob=0;}
         if(py<orbit.by&&ball.y>=orbit.by&&ball.vy>0&&ball.ot>0){
           ball.ot=0;
@@ -430,7 +498,7 @@ function makeSim(){
     }
     for(bi=0;bi<balls.length;bi++)for(k=bi+1;k<balls.length;k++){   // ball against ball
       var p=balls[bi],q=balls[k],bx=q.x-p.x,by=q.y-p.y,bd=Math.sqrt(bx*bx+by*by);
-      if(bd<2*R&&bd>1e-6&&!(p.hold>0)&&!(q.hold>0)){
+      if(bd<2*R&&bd>1e-6&&!(p.hold>0)&&!(q.hold>0)&&p.rp<0&&q.rp<0){
         var ux=bx/bd,uy=by/bd,ov=(2*R-bd)/2;
         p.x-=ux*ov;p.y-=uy*ov;q.x+=ux*ov;q.y+=uy*ov;
         var rv=(q.vx-p.vx)*ux+(q.vy-p.vy)*uy;
@@ -458,7 +526,7 @@ function makeSim(){
   }
   function step(dt){if(dt>0.034)dt=0.034;var h=dt/SUB;for(var k=0;k<SUB;k++)sub(h);st.time+=dt;}
   function setFlipper(k,on){if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
-  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,flippers:flippers,balls:balls,st:st,events:events,
+  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,flippers:flippers,balls:balls,st:st,events:events,
           step:step,launch:launch,inLane:inLane,newGame:newGame,setFlipper:setFlipper,tip:tip};
 }
 </script>
