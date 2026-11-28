@@ -272,35 +272,42 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             superJackpot n x y   ramp crest during Last Stand, +10000 (x3 etc), v = this game-mode jackpot count; 'ramp' still fires too
             wizardEnd n          Last Stand over, v = super jackpots scored
             surprise 'wizard'    Last Stand start banner
-   ROUND 5 (Gloom's Lair upper playfield). A small walled mini table ABOVE the main table, in negative y. Draw it as a raised table above the main table;
-   lv 1 balls are drawn on it. The main table is unchanged (y 0..720). The UI should lay out the logical area y = sim.top..720 (sim.W, sim.H unchanged). All data below.
-   exports  top   lowest y the UI must show (lair top edge minus a margin; the lair and its lairPath/exitPath stay inside y >= top)
-            lair  {x0:90,y0:-185,x1:310,y1:-10  bounds (the lair's outer walls; inner floor opening is at the bottom left),
-                   segs:[{x1,y1,x2,y2,e,..}]  walls (peaked ceiling) + floor + slope into the flipper, ONLY lv 1 balls hit these (NOT in sim.segs); draw them like the main walls. The floor has one kick pad (a seg with id:'sling', kick 430): it fires the normal 'sling' event, x,y inside the lair,
-                   flipper  mini flipper, same fields as sim.flippers (px,py,len:30,side:-1,a,av,pressed): sim.tip(lair.flipper) works; driven by the RIGHT flipper input (setFlipper(1)),
-                   guards:[{i,x,y,r:13,lit}] x3 "Gloom's Guards" standing targets (round, like sim.targets),
-                   vault {x,y,r:22,t,hold:1.0}  saucer near the top center; t = seconds the ball is still held (0 = empty; held ball sits at x,y),
-                   exit {x0,x1,y}  the opening in the floor at the bottom left (x-range; a lv 1 ball falling below y leaves through it),
-                   exitPath:[{x,y,h}]  wire from the exit down the left side to the main table (ride speed = ramps[0].ride; h > 0 all the way, 0 at landing)}
-            ramps[1].lairPath  [{x,y,h}] alternate path for Rooftop Run: from its crest point, up and over the top of the table to the lair entry (h ~1, last point h 0.2, ridden at ramps[1].ride); not drawn by ramp code, draw it like a ramp wire when you want to show the diverter
-   ball     lv  0 on the main table, 1 in the lair. A lv 1 ball collides ONLY with the lair walls/guards/vault/mini flipper and never sees the main table. Gravity, damping, speed cap, nudge are the same.
-            lr  0, 1 riding ramps[1].lairPath (to the lair), 2 riding lair.exitPath (down to the main table). While lr > 0: rp is -1, h > 0, no collisions, x,y,h follow the path (draw above everything). lv is 0 during both rides, becomes 1 on landing in the lair.
-            Ball-against-ball only between balls of the same lv, both h 0. A lair ball is a live ball in play (drain, saver, multiball, mission/showdown/wizard timers).
-   st       lairOpen  true = the next Rooftop Run crest is diverted to the lair (set by 'bank' and 'bossStart'; becomes false when a ball is diverted, one visit per opening; reset by newGame)
-            vaultLit  true once all 3 guards are lit (vault pays the jackpot); guards[i].lit reset on a vault jackpot; reset by newGame
-            lairVisits  balls that entered the lair this game;  vaults  jackpots paid this game
-   events   lairOpen          st.lairOpen went false to true (draw the diverter lit)
-            lairEnter 0 x y   diverted ball landed in the lair as lv 1 (x,y = landing point); Rooftop Run still scored everything first ('ramp' 1, 'orbit' 1)
-            guard i x y       guard i hit hard enough (hit 500, 1 damage in a showdown); guards stay lit
-            vaultLit          all 3 guards lit, st.vaultLit true
-            vault v x y       ball captured by the vault; v 1 = lit jackpot (+15000, 4 damage in a showdown, guards reset), v 0 = unlit (+500); ball held lair.vault.hold s then kicked down toward the mini flipper
-            (safety: a lv 1 ball that somehow gets outside the lair walls is silently put on lair.exitPath too)
-            lairExit 0 x y    lv 1 ball fell through the exit and starts riding lair.exitPath (x,y = where it left); it lands above lanes[1] as lv 0 h 0 moving down at 260 (it never drains directly)
+   ROUND 5, REDONE (Gloom's Lair is a full upper table). lv 1 balls live on a second table in the SAME frame as the main one (x 10..390, y 0..720, same
+   top arc), drawn on its own screen: the view pans up to it while sim.lairView() is true and back down after. sim.top (-30) is the highest y the
+   main table's wires reach; the UI lays out y = sim.top..720 for either table.
+   exports  lair  {segs  walls, top arc, slopes into the flippers, two slings (id:'sling', kick 430); ONLY lv 1 balls hit these (NOT in sim.segs),
+                   flippers [left, right]  same fields and size as sim.flippers, same positions; driven by the same inputs (setFlipper(0), setFlipper(1)),
+                   guards [{i,x,y,r:13,lit}] x3 "Gloom's Guards",
+                   vault {x,y,r:22,t,hold:1.0,shot:1.5}  saucer at the top; t = seconds the ball is still held; a LIT vault only takes a ball a lair flipper hit within 'shot' s,
+                   entry {x,y}  where a ball arriving from a ramp drops in,
+                   ramp  "Throne Ramp": same fields as a main ramp (ex0,ex1,ey entrance, path, crest, exit, cum, len); entered only by lv 1 balls (b.rp 0 while b.lv 1),
+                   exitPath [{x,y,h}]  wire on the MAIN table from above the arc down the left side to the left inlane}
+            ramps[i].lairPath  [{x,y,h}] for BOTH ramps: from the crest up past the top of the main table (ridden at ramp.ride; draw like a ramp wire)
+            beacon {x,y,r:14,on,t}  "Signal Beacon": a sensor sweeping inside the top arc of the main table; t = seconds until it is back after a hit
+            lairView()  true while a ball is in the lair or most of the way up a lairPath (the UI shows the upper table)
+   ball     lv 0 main table, 1 lair.  lr 0, 1 riding ramps[lp].lairPath, 2 riding lair.exitPath (lv 0 during both rides).  lp ramp index of the lairPath ride.
+            ft  sim clock of the ball's last flipper contact.  lt  seconds left to finish a Top Loop after the left-side sensor.
+   st       lairOpen  the next crest of EITHER ramp goes to the lair, when exactly one ball is in play (no multiball, no queue, not Last Stand). Set at every
+                      ball start and by: drop bank, showdown start, 3 ramp crests, beacon hit, every 2nd Top Loop. Cleared by a trip up (one visit per opening)
+            lairLv  1..3, raised by each vault jackpot (jackpot = awards.vault[lairLv-1]);  vaultLit  all 3 guards lit;  lairVisits, vaults, thrones, loops
+            lairT  seconds the current visit has lasted
+   rules    While a ball is upstairs (lv 1 or riding up) the main table's clocks stand still: mission, showdown, Last Stand, mystery, Hideout prize and ball saver.
+            A lair ball that falls past the lair flippers rides lair.exitPath down (never a drain); within the first 4 s of a visit it is kicked back up once instead.
+            Last Stand also needs lairLv >= 2 (one vault jackpot this game).  Lane change: a new flipper press on the main table moves the lit top lamps one step.
+   events   lairOpen          st.lairOpen went false to true
+            lairEnter 0 x y   ball landed in the lair (the ramp crest scored first)
+            guard i x y       guard i hit hard enough (hit 500, 1 damage in a showdown);  guardLit i x y  the Throne Ramp lit guard i
+            vaultLit          all 3 guards lit
+            vault v x y       vault capture; v 1 = jackpot (4 damage in a showdown, guards reset), v 0 = unlit (+500); ball held, then kicked down
+            lairLevel n       lair level rose to n
+            throne n x y      Throne Ramp made (+awards.throne x n, n = lair level; 2 damage);  throneFail i x y  too weak, rolled back out
+            lairSave 0 x y    quick drain in the lair, kicked back up
+            lairExit 0 x y    ball left the lair and starts riding lair.exitPath
+            beacon 0 x y      Signal Beacon hit (+awards.beacon, lights the lair);  loop n x y  Top Loop made, n = loops this game (+awards.loop)
    ROUND 6 (last rules round: shield, magnet, extra ball, match, video mode, combos). Rules plus three small data additions; no existing geometry changed.
    exports  shield  {x0:298,y0:309,x1:356,y1:297,up,hits}  "Gloom Shield": a slanted seg across the Rooftop Run entrance (ramps[1], ey 302). Also in segs with shield:true; off:true while down (draw nothing for it, draw from this object). up true while standing; hits = hits taken so far (0..3)
             magnet  {x:185,y:631,r:20,t}  "Tide's Undertow" catch zone just above the gap between the main flippers (x,y computed from the flipper rest tips). t = seconds a caught ball is still held (0 = empty; held ball sits at x,y)
             videoDef  {lanes:3,t:12,maxHits:3,spins:14}  Rooftop Chase constants (spins = scoring spinner half turns that light it)
-            lair.vault gained rl:75  capture radius while st.vaultLit (r:22 stays the drawn saucer; a lit vault pulls balls in from farther). Diverted balls now land in the lair with a little random velocity.
    ball     mg  true while held by the magnet (draw it pinned at magnet.x,y like a hideout ball)
    st       magnet  true = Tide's Undertow armed (set at each ball start, incl. a shoot-again ball, once Tide has been recruited this game; false after it fires)
             tideIn  Tide recruited at least once this game (stays true when heroes reset)
@@ -340,7 +347,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             surprise 'superskill'    super skill shot banner */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
-  var AW={superskill:5000,encore:3000,hustle:2500,rally:7500,videoDodge:1000,videoPerfect:5000,mission:8000,showdown:25000,vault:15000,superJackpot:10000,mysteryBonus:3000};
+  var AW={superskill:5000,encore:3000,hustle:2500,rally:7500,videoDodge:1000,videoPerfect:5000,mission:8000,showdown:25000,vault:[30000,50000,75000],throne:7500,beacon:2000,loop:1500,superJackpot:10000,mysteryBonus:3000};
   var segs=[];
   function add(x1,y1,x2,y2,o){var s={x1:x1,y1:y1,x2:x2,y2:y2,e:0.45,kick:0,oneWay:false};if(o)for(var k in o)s[k]=o[k];segs.push(s);}
   add(10,190,10,720);                 // left wall (runs down past the left outlane)
@@ -378,14 +385,14 @@ function makeSim(){
   var REST=0.5,UP=-0.55,FS=20;
   var magnet={x:Math.round((flippers[0].px+flippers[0].len*Math.cos(REST)+flippers[1].px-flippers[1].len*Math.cos(REST))/2),y:Math.round(flippers[0].py+flippers[0].len*Math.sin(REST)-36),r:20,t:0};
   var videoDef={lanes:3,t:12,maxHits:3,spins:14},spins=0,vSp=0,ebBank=false,ebVault=false,clk=0,chainT=0,lastRI=-1,lastRT=-99,hidT=-99,rampTs=[],launchT=-99,sup=false;
-  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,lr:0,mg:false};}
+  function newBall(){return {x:375,y:690,vx:0,vy:0,still:0,hold:0,ign:0,ob:0,ot:0,ol:-1,h:0,rp:-1,rs:0,ru:0,rc:false,lv:0,lr:0,lp:1,mg:false,ft:-99,lt:0};}
   var balls=[newBall()],ball=null;
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
           lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1,
           missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[],lairOpen:false,vaultLit:false,lairVisits:0,vaults:0,
-          magnet:false,tideIn:false,extraLit:false,extra:0,missionsDone:0,match:-1,matchWin:false,videoLit:false,video:null,chain:0,namedCombos:0,videoPerfect:false};
+          magnet:false,tideIn:false,extraLit:false,extra:0,missionsDone:0,match:-1,matchWin:false,videoLit:false,video:null,chain:0,namedCombos:0,videoPerfect:false,lairLv:1,thrones:0,loops:0,lairT:0};
   var mBanner=false;
   var missionDefs=[{i:0,hero:'Kite',name:'Sky Patrol',goal:'2 ramp crests',need:2,t:50},{i:1,hero:'Ember',name:'Fire Drill',goal:'8 bumper hits',need:8,t:35},{i:2,hero:'Tide',name:'Flood Gates',goal:'5 drop targets',need:5,t:40}];
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
@@ -406,66 +413,93 @@ function makeSim(){
     mkRamp({i:1,name:'Rooftop Run',ex0:298,ex1:358,ey:302,min:RMIN,dec:RDEC,crest:3,exit:{x:322,y:505,vx:0,vy:260},
       path:[{x:336,y:302,h:0},{x:345,y:270,h:0.35},{x:345,y:240,h:0.75},{x:345,y:212,h:1},{x:338,y:196,h:1},{x:329,y:192,h:1},{x:322,y:200,h:1},{x:322,y:260,h:1},{x:322,y:350,h:1},{x:322,y:440,h:0.9},{x:322,y:480,h:0.5},{x:322,y:505,h:0}]})
   ];
-  // ---- Gloom's Lair: upper mini playfield (lv 1), data + helpers ----
+  // ---- Gloom's Lair: a full upper table of its own (lv 1). Same frame as the main table (x 10..390, y 0..720), its own walls, flippers and ramp ----
   function cumOf(P){var c=[0],k;for(k=1;k<P.length;k++){var a=P[k-1],b=P[k];c.push(c[k-1]+Math.sqrt((b.x-a.x)*(b.x-a.x)+(b.y-a.y)*(b.y-a.y)));}return c;}
-  var top=-200;
-  var lair={x0:90,y0:-185,x1:310,y1:-10,segs:[],
-    flipper:{px:296,py:-45,len:30,side:-1,a:0.5,av:0,pressed:false},
-    guards:[{i:0,x:150,y:-95,r:13,lit:false},{i:1,x:200,y:-85,r:13,lit:false},{i:2,x:250,y:-95,r:13,lit:false}],
-    vault:{x:200,y:-162,r:22,rl:75,t:0,hold:1.0},
-    exit:{x0:90,x1:118,y:-19},
-    exitPath:[{x:108,y:-14,h:0.3},{x:80,y:0,h:0.6},{x:52,y:40,h:0.9},{x:36,y:100,h:1},{x:28,y:200,h:1},{x:26,y:330,h:1},{x:28,y:430,h:1},{x:34,y:480,h:0.6},{x:48,y:512,h:0}]};
+  var top=-30;
+  var lair={segs:[],
+    flippers:[{px:122,py:645,len:46,side:1,a:0.5,av:0,pressed:false},{px:248,py:645,len:46,side:-1,a:0.5,av:0,pressed:false}],
+    guards:[{i:0,x:135,y:330,r:13,lit:false},{i:1,x:200,y:300,r:13,lit:false},{i:2,x:265,y:330,r:13,lit:false}],
+    vault:{x:200,y:118,r:22,t:0,hold:1.0,shot:1.5},
+    entry:{x:330,y:105},
+    ramp:{i:2,name:'Throne Ramp',ex0:16,ex1:76,ey:340,min:480,dec:900,crest:3,exit:{x:352,y:548,vx:-40,vy:200},
+      path:[{x:46,y:340,h:0},{x:46,y:280,h:0.4},{x:54,y:210,h:0.8},{x:80,y:150,h:1},{x:120,y:96,h:1},{x:170,y:66,h:1},{x:230,y:66,h:1},{x:286,y:96,h:1},{x:334,y:150,h:1},{x:362,y:230,h:1},{x:366,y:330,h:1},{x:362,y:440,h:0.8},{x:356,y:510,h:0.4},{x:352,y:548,h:0}]},
+    exitPath:[{x:70,y:-20,h:1},{x:40,y:60,h:1},{x:28,y:200,h:1},{x:26,y:330,h:1},{x:28,y:430,h:1},{x:34,y:480,h:0.6},{x:48,y:512,h:0}]};
   (function(){
     function w(x1,y1,x2,y2,o){var s={x1:x1,y1:y1,x2:x2,y2:y2,e:0.45,kick:0,oneWay:false};if(o)for(var k in o)s[k]=o[k];lair.segs.push(s);}
-    w(90,-155,90,-10);w(90,-155,200,-185,{e:0.5});w(200,-185,310,-155,{e:0.5});   // peaked ceiling funnels balls to the vault
-    w(310,-155,310,-72);w(310,-72,300,-48,{e:0.3});       // right wall, slope into the mini flipper
-    w(268,-30,225,-28,{e:0.3});w(225,-28,170,-25,{e:0.3,kick:430,id:'sling'});w(170,-25,118,-22,{e:0.3});                           // floor, falls to the exit opening at the bottom left
+    var j,t0,t1;
+    w(10,190,10,560);w(390,190,390,560);
+    for(j=0;j<N;j++){t0=Math.PI+Math.PI*j/N;t1=Math.PI+Math.PI*(j+1)/N;w(200+190*Math.cos(t0),190+190*Math.sin(t0),200+190*Math.cos(t1),190+190*Math.sin(t1),{e:0.5});}
+    w(10,560,116,638,{e:0.3});w(390,560,254,638,{e:0.3});           // slopes into the two lair flippers
+    w(60,480,60,550);w(60,550,105,580);w(60,480,105,580,{kick:430,id:'sling'});
+    w(340,480,340,550);w(340,550,295,580);w(340,480,295,580,{kick:430,id:'sling'});
   })();
+  mkRamp(lair.ramp);
   lair.exitCum=cumOf(lair.exitPath);lair.exitLen=lair.exitCum[lair.exitCum.length-1];
-  ramps[1].lairPath=[{x:345,y:212,h:1},{x:349,y:120,h:1},{x:352,y:20,h:1},{x:352,y:-80,h:1},{x:346,y:-150,h:1},{x:324,y:-190,h:1},{x:285,y:-184,h:0.7},{x:262,y:-152,h:0.2}];
-  ramps[1].lairCum=cumOf(ramps[1].lairPath);ramps[1].lairLen=ramps[1].lairCum[ramps[1].lairCum.length-1];
-  function setLairOpen(){if(!st.lairOpen){st.lairOpen=true;emit('lairOpen');}}
-  function lairRide(b,dt){               // riding lairPath (lr 1) or exitPath (lr 2)
-    var r=ramps[1],P=b.lr===1?r.lairPath:lair.exitPath,c=b.lr===1?r.lairCum:lair.exitCum,len=c[c.length-1];
+  ramps[0].lairPath=[{x:40,y:250,h:1},{x:30,y:170,h:1},{x:44,y:80,h:1},{x:90,y:10,h:1},{x:150,y:-20,h:1}];
+  ramps[1].lairPath=[{x:345,y:212,h:1},{x:350,y:120,h:1},{x:330,y:40,h:1},{x:290,y:0,h:1},{x:250,y:-20,h:1}];
+  ramps.forEach(function(r){r.lairCum=cumOf(r.lairPath);r.lairLen=r.lairCum[r.lairCum.length-1];});
+  var lairSaved=false,lairCrests=0;
+  var beacon={x:200,y:40,r:14,on:true,t:0};
+  function setLairOpen(){if(!st.lairOpen){st.lairOpen=true;lairCrests=0;emit('lairOpen');}}
+  function upNow(){for(var k=0;k<balls.length;k++)if(balls[k].lv===1||balls[k].lr===1)return true;return false;}
+  function lairView(){                    // the display shows the upper table: a ball is in it, or nearly there on the way up
+    for(var k=0;k<balls.length;k++){var b=balls[k];if(b.lv===1||(b.lr===1&&b.rs>0.6*ramps[b.lp].lairLen))return true;}
+    return false;
+  }
+  function lairRide(b,dt){               // riding a ramp's lairPath (lr 1) or exitPath (lr 2)
+    var r=ramps[b.lr===1?b.lp:1],P=b.lr===1?r.lairPath:lair.exitPath,c=b.lr===1?r.lairCum:lair.exitCum,len=c[c.length-1];
     b.rs+=r.ride*dt;
     if(b.rs>=len){
-      var e=P[P.length-1];b.x=e.x;b.y=e.y;b.h=0;b.rs=0;b.ru=0;b.still=0;b.ign=0.3;
-      if(b.lr===1){b.lv=1;b.vx=-90+(Math.random()-0.5)*90;b.vy=30+(Math.random()-0.5)*50;b.lr=0;st.lairVisits++;emit('lairEnter',0,b.x,b.y);major(b.x,b.y);}
-      else{b.lv=0;b.vx=0;b.vy=260;b.lr=0;}
+      b.h=0;b.rs=0;b.ru=0;b.still=0;b.ign=0.3;
+      if(b.lr===1){var e=lair.entry;b.x=e.x;b.y=e.y;b.lv=1;b.vx=-70+(Math.random()-0.5)*60;b.vy=20+Math.random()*30;b.lr=0;b.ft=-99;st.lairVisits++;st.lairT=0;lairSaved=false;emit('lairEnter',0,b.x,b.y);major(b.x,b.y);}
+      else{var q=P[P.length-1];b.x=q.x;b.y=q.y;b.lv=0;b.vx=0;b.vy=260;b.lr=0;}
       return;
     }
     b.ru=r.ride;pathPos(b,P,c);
   }
-  function lairLeave(b,quiet){                 // lv 1 ball falls out of the exit (or got outside the walls): ride the exit path
+  function lairLeave(b,quiet){                 // lv 1 ball drains past the lair flippers (or got outside the walls): ride the exit wire down the main table
+    if(!quiet)emit('lairExit',0,b.x,Math.min(b.y,H));
     var e=lair.exitPath[0];
-    if(!quiet)emit('lairExit',0,b.x,b.y);
-    b.lv=0;b.lr=2;b.rs=0;b.ru=ramps[1].ride;b.hold=0;b.x=e.x;b.y=e.y;b.h=e.h;b.vx=b.vy=0;b.still=0;b.ol=-1;
+    b.lv=0;b.lr=2;b.rp=-1;b.rs=0;b.ru=ramps[1].ride;b.hold=0;b.x=e.x;b.y=e.y;b.h=e.h;b.vx=b.vy=0;b.still=0;b.ol=-1;
   }
+  function chkVault(){if(!st.vaultLit&&lair.guards[0].lit&&lair.guards[1].lit&&lair.guards[2].lit){st.vaultLit=true;emit('vaultLit');}}
   function guardHit(c){
-    c.lit=true;hit(500,'guard');emit('guard',c.i,ball.x,ball.y);dmg(1,c.x,c.y);
-    if(!st.vaultLit&&lair.guards[0].lit&&lair.guards[1].lit&&lair.guards[2].lit){st.vaultLit=true;emit('vaultLit');}
+    c.lit=true;hit(500,'guard');emit('guard',c.i,ball.x,ball.y);dmg(1,c.x,c.y);chkVault();
   }
-  function lairBall(dtc){                   // collisions and rules for the ball (lv 1) after integration
-    var k,sp,v=lair.vault;
+  function throneMade(b){                // the Throne Ramp: only the lair flippers can make it
+    var x=b.x,y=b.y,k;
+    st.thrones++;pts(AW.throne*st.lairLv);emit('throne',st.lairLv,x,y);major(x,y);dmg(2,x,y);
+    for(k=0;k<3;k++)if(!lair.guards[k].lit){lair.guards[k].lit=true;emit('guardLit',k,lair.guards[k].x,lair.guards[k].y);break;}
+    chkVault();
+  }
+  function lairBall(dtc,py){                // collisions and rules for the ball (lv 1) after integration
+    var k,sp,v=lair.vault,rm=lair.ramp;
     for(k=0;k<lair.segs.length;k++)hitSeg(lair.segs[k]);
     for(k=0;k<3;k++)hitCircle(lair.guards[k],'guard',k);
-    hitFlipper(lair.flipper);
+    hitFlipper(lair.flippers[0]);hitFlipper(lair.flippers[1]);
     sp=Math.sqrt(ball.vx*ball.vx+ball.vy*ball.vy);
     if(sp>VMAX){ball.vx*=VMAX/sp;ball.vy*=VMAX/sp;}
-    if(v.t<=0&&ball.ign<=0&&sp<450){     // vault capture
-      var vx=ball.x-v.x,vy=ball.y-v.y;
-      var cr=st.vaultLit?v.rl:v.r;      // a lit vault pulls in balls from farther away
-      if(vx*vx+vy*vy<cr*cr){
+    if(ball.x>rm.ex0&&ball.x<rm.ex1&&py>=rm.ey&&ball.y<rm.ey&&-ball.vy>=rm.min){   // Throne Ramp entrance
+      ball.rp=0;ball.rs=0;ball.ru=Math.min(-ball.vy,VMAX);ball.rc=false;pathPos(ball,rm.path,rm.cum);return;
+    }
+    if(v.t<=0&&ball.ign<=0&&sp<450){     // vault: an unlit vault takes any slow ball; a lit one only a ball shot by a lair flipper
+      var vx=ball.x-v.x,vy=ball.y-v.y,shot=clk-ball.ft<=v.shot;
+      if(vx*vx+vy*vy<v.r*v.r&&(!st.vaultLit||shot)){
         ball.x=v.x;ball.y=v.y;ball.vx=ball.vy=0;ball.still=0;ball.hold=v.t=v.hold;
         if(st.vaultLit){
-          pts(AW.vault);emit('vault',1,ball.x,ball.y);st.vaults++;dmg(4,ball.x,ball.y);if(!ebVault&&!st.extraLit){ebVault=true;litExtra();}
+          pts(AW.vault[st.lairLv-1]);emit('vault',1,ball.x,ball.y);st.vaults++;dmg(4,ball.x,ball.y);if(!ebVault&&!st.extraLit){ebVault=true;litExtra();}
           for(k=0;k<3;k++)lair.guards[k].lit=false;st.vaultLit=false;
+          if(st.lairLv<AW.vault.length){st.lairLv++;emit('lairLevel',st.lairLv);}
+          chkWiz();
         }else{hit(500,'vault');emit('vault',0,ball.x,ball.y);}
         return;
       }
     }
-    if(ball.y>lair.exit.y&&ball.x>lair.x0&&ball.x<lair.x1){lairLeave(ball,false);return;}
-    if(ball.y>lair.exit.y||ball.x<lair.x0+4||ball.x>lair.x1-4||ball.y<lair.y0+4){lairLeave(ball,true);return;}   // outside the walls: safety, silent
+    if(ball.y>H+10){                     // drained past the lair flippers: back to the main table (one quick save per visit)
+      if(st.lairT<4&&!lairSaved){lairSaved=true;ball.x=185;ball.y=560;ball.vx=(Math.random()-0.5)*120;ball.vy=-1050;ball.ign=0.3;emit('lairSave',0,ball.x,ball.y);return;}
+      lairLeave(ball,false);return;
+    }
+    if(ball.x<0||ball.x>W||ball.y<-20||ball.x!==ball.x){lairLeave(ball,true);return;}   // outside the walls: safety, silent
     if(sp<10){ball.still+=dtc;if(ball.still>2.5){ball.vy=-320;ball.vx=(ball.x<200?1:-1)*140;ball.still=0;emit('wall',300);}}
     else ball.still=0;
   }
@@ -508,25 +542,30 @@ function makeSim(){
     if(sl>0){b.vx=(e.x-a.x)/sl*b.ru;b.vy=(e.y-a.y)/sl*b.ru;}
   }
   function rampStep(b,dt){
-    var r=ramps[b.rp];
+    var r=b.lv===1?lair.ramp:ramps[b.rp];
     if(!b.rc){b.ru-=r.dec*dt;if(b.ru<-900)b.ru=-900;}
     b.rs+=b.ru*dt;
     if(b.rs<=0){                       // stalled and rolled back: out of the entrance, moving away
       var p0=r.path[0];
       b.x=p0.x;b.y=r.ey+14;b.vx=0;b.vy=160;b.h=0;b.rp=-1;b.rs=0;b.ru=0;b.rc=false;b.still=0;
-      emit('rampFail',r.i,p0.x,r.ey);return;
+      if(b.lv===1)emit('throneFail',r.i,p0.x,r.ey);else emit('rampFail',r.i,p0.x,r.ey);return;
     }
     if(!b.rc&&b.rs>=r.cs){
-      b.rc=true;b.ru=r.ride;b.rs=r.cs;rampPos(b,r);rampMade(b,r);
-      if(r.i===1&&st.lairOpen){          // diverter: leave the wire, ride the lair path
-        st.lairOpen=false;b.rp=-1;b.lr=1;b.rs=0;b.ru=r.ride;b.rc=false;pathPos(b,r.lairPath,r.lairCum);return;
+      b.rc=true;b.ru=r.ride;b.rs=r.cs;pathPos(b,r.path,r.cum);
+      if(b.lv===1)throneMade(b);
+      else{
+        rampMade(b,r);
+        if(st.lairOpen&&balls.length===1&&st.queue===0&&!st.mb&&!st.wiz){   // diverter: either ramp, one ball in play: leave the wire, ride up to the lair
+          st.lairOpen=false;b.rp=-1;b.lr=1;b.lp=r.i;b.rs=0;b.ru=r.ride;b.rc=false;pathPos(b,r.lairPath,r.lairCum);return;
+        }
+        if(!st.lairOpen&&++lairCrests>=3)setLairOpen();   // three ramp crests relight the lair
       }
     }
-    if(b.rs>=r.len){                   // wire end: back on the playfield with the exit velocity
+    if(b.rs>=r.len){                   // wire end: back on the playfield (or the lair floor) with the exit velocity
       var ex=r.exit;
       b.x=ex.x;b.y=ex.y;b.vx=ex.vx;b.vy=ex.vy;b.h=0;b.rp=-1;b.rs=0;b.ru=0;b.rc=false;b.still=0;b.ign=0.3;return;
     }
-    rampPos(b,r);
+    pathPos(b,r.path,r.cum);
   }
   var SPOTS=[[200,222],[75,340],[325,340],[120,430],[280,430]];
   var events=[];
@@ -545,9 +584,9 @@ function makeSim(){
     st.score=0;st.time=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
-    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;st.lairOpen=false;st.vaultLit=false;st.lairVisits=0;st.vaults=0;
+    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;st.lairOpen=true;st.vaultLit=false;st.lairVisits=0;st.vaults=0;st.lairLv=1;st.thrones=0;st.loops=0;st.lairT=0;lairSaved=false;lairCrests=0;beacon.on=true;beacon.t=0;
     st.magnet=false;st.tideIn=false;st.extraLit=false;st.extra=0;st.missionsDone=0;st.match=-1;st.matchWin=false;st.videoLit=false;st.video=null;st.chain=0;st.namedCombos=0;st.videoPerfect=false;
-    ebBank=false;ebVault=false;spins=0;vSp=0;clk=0;chainT=0;lastRI=-1;lastRT=-99;hidT=-99;rampTs.length=0;launchT=-99;sup=false;magnet.t=0;shieldWant=false;shield.up=false;shield.hits=0;sseg.off=true;lair.guards.forEach(function(g){g.lit=false;});lair.vault.t=0;lair.flipper.a=0.5;lair.flipper.av=0;lair.flipper.pressed=false;
+    ebBank=false;ebVault=false;spins=0;vSp=0;clk=0;chainT=0;lastRI=-1;lastRT=-99;hidT=-99;rampTs.length=0;launchT=-99;sup=false;magnet.t=0;shieldWant=false;shield.up=false;shield.hits=0;sseg.off=true;lair.guards.forEach(function(g){g.lit=false;});lair.vault.t=0;lair.flippers.forEach(function(f){f.a=0.5;f.av=0;f.pressed=false;});
     st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
   }
@@ -594,8 +633,8 @@ function makeSim(){
     }
     if(v.hits>=videoDef.maxHits||v.t<=0){st.videoPerfect=v.hits===0;pts(v.dodged*AW.videoDodge+(st.videoPerfect?AW.videoPerfect:0));emit('videoEnd',v.dodged);st.video=null;st.videoLit=false;}
   }
-  function chkWiz(){                   // Last Stand earned: 3 missions done and a showdown won
-    if(!st.wiz&&!st.wizLit&&st.bossWins>=1&&st.missions[0]===3&&st.missions[1]===3&&st.missions[2]===3){st.wizLit=true;emit('wizardLit');}
+  function chkWiz(){                   // Last Stand earned: 3 missions done, a showdown won and a lair jackpot (lair level 2+)
+    if(!st.wiz&&!st.wizLit&&st.bossWins>=1&&st.lairLv>=2&&st.missions[0]===3&&st.missions[1]===3&&st.missions[2]===3){st.wizLit=true;emit('wizardLit');}
   }
   function mStep(i,x,y){               // one counted mission step
     var m=st.mission;
@@ -712,12 +751,13 @@ function makeSim(){
     var vn=(ball.vx-sx)*nx+(ball.vy-sy)*ny;
     ball.x+=nx*(m-d);ball.y+=ny*(m-d);
     if(vn<0){ball.vx-=1.35*vn*nx;ball.vy-=1.35*vn*ny;}
+    ball.ft=clk;
   }
   function sub(dt){
     var k,f,bi,b;
     if(st.video){vidStep(dt);st.mode=mode();return;}   // video mode: flippers, balls and every timer stand still
-    for(k=0;k<3;k++){
-      f=k<2?flippers[k]:lair.flipper;
+    for(k=0;k<4;k++){
+      f=k<2?flippers[k]:lair.flippers[k-2];
       var target=f.pressed?UP:REST,old=f.a;
       if(f.a<target)f.a=Math.min(target,f.a+FS*dt);else if(f.a>target)f.a=Math.max(target,f.a-FS*dt);
       f.av=(f.a-old)/dt;
@@ -725,6 +765,9 @@ function makeSim(){
     if(st.over)return;
     clk+=dt;
     if(chainT>0){chainT-=dt;if(chainT<=0){chainT=0;st.chain=0;}}
+    var up=upNow();if(up)st.lairT+=dt;
+    if(!beacon.on){beacon.t-=dt;if(beacon.t<=0){beacon.t=0;beacon.on=true;}}   // the Signal Beacon sweeps back and forth inside the top arc
+    var ba=-Math.PI/2+1.05*Math.sin(clk*0.7);beacon.x=200+150*Math.cos(ba);beacon.y=190+150*Math.sin(ba);
     if(shieldWant&&!shield.up){          // raise the Gloom Shield once no ball is within 14 units of it
       var clr0=true;
       for(bi=0;bi<balls.length;bi++){
@@ -757,7 +800,7 @@ function makeSim(){
     }
     if(st.comboT>0){st.comboT-=dt;if(st.comboT<=0)st.combo=0;}
     if(st.frenzy>0)st.frenzy-=dt;if(st.gold>0)st.gold-=dt;if(st.lowG>0)st.lowG-=dt;
-    var live=false;for(k=0;k<balls.length;k++)if(balls[k].x<=360)live=true;
+    var live=false;for(k=0;k<balls.length;k++)if(balls[k].x<=360&&balls[k].lv===0&&balls[k].lr!==1)live=true;   // the main table's clocks stand still while the ball is upstairs
     if(live){                          // the mystery star comes and goes while a ball is in play
       st.play+=dt;
       if(st.hideCd>0)st.hideCd=Math.max(0,st.hideCd-dt);
@@ -775,7 +818,7 @@ function makeSim(){
     if(st.mb){b=laneBall();if(b){b.vy=-(1350+Math.random()*250);emit('launch',0.7);}}
     for(bi=balls.length-1;bi>=0;bi--){
       ball=balls[bi];
-      if(ball.ign>0)ball.ign-=dt;if(ball.ob>0)ball.ob-=dt;if(ball.ot>0)ball.ot-=dt;
+      if(ball.ign>0)ball.ign-=dt;if(ball.ob>0)ball.ob-=dt;if(ball.ot>0)ball.ot-=dt;if(ball.lt>0)ball.lt-=dt;
       if(ball.hold>0){                 // held in the hideout: pinned, no physics
         ball.hold-=dt;
         if(ball.mg){                   // held by the magnet, then flung up
@@ -786,7 +829,7 @@ function makeSim(){
         if(ball.lv===1){
           lair.vault.t=Math.max(0,ball.hold);
           if(ball.hold>0)continue;
-          lair.vault.t=0;ball.hold=0;ball.ign=0.6;ball.vx=120+Math.random()*80;ball.vy=60+Math.random()*80;
+          lair.vault.t=0;ball.hold=0;ball.ign=0.6;ball.vx=(Math.random()-0.5)*220;ball.vy=90+Math.random()*60;
         }else{
           hideout.t=Math.max(0,ball.hold);
           if(ball.hold>0)continue;
@@ -799,7 +842,7 @@ function makeSim(){
       ball.vy+=G*(st.lowG>0?0.55:1)*dt;
       ball.vx*=1-0.04*dt;ball.vy*=1-0.04*dt;
       ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
-      if(ball.lv===1){lairBall(dt);continue;}
+      if(ball.lv===1){lairBall(dt,py);continue;}
       for(k=0;k<segs.length;k++)hitSeg(segs[k]);
       for(k=0;k<bumpers.length;k++)hitCircle(bumpers[k],'bumper',k);
       if(ball.x<360)for(k=0;k<targets.length;k++)hitCircle(targets[k],'target',k);
@@ -822,6 +865,11 @@ function makeSim(){
         }
       }
       if(ball.rp>=0)continue;
+      if(ball.x<56&&py>=210&&ball.y<210&&ball.vy<-300)ball.lt=1.6;   // Top Loop: up the far left side...
+      if(ball.x>orbit.x0&&ball.x<orbit.x1&&ball.lt>0&&py<orbit.ty&&ball.y>=orbit.ty&&ball.vy>0){   // ...around the top arc and down the Rooftop Run channel
+        ball.lt=0;st.loops++;hit(AW.loop,'loop');emit('loop',st.loops,ball.x,ball.y);if(st.loops%2===0)setLairOpen();
+      }
+      if(beacon.on){var bcx=ball.x-beacon.x,bcy=ball.y-beacon.y;if(bcx*bcx+bcy*bcy<(beacon.r+R)*(beacon.r+R)){beacon.on=false;beacon.t=12;hit(AW.beacon,'beacon');emit('beacon',0,beacon.x,beacon.y);setLairOpen();}}
       if(ball.x>orbit.x0&&ball.x<orbit.x1){   // reverse run through the channel (top to bottom): the 'alley' secret
         if(py<orbit.ty&&ball.y>=orbit.ty&&ball.vy>0){ball.ot=2;ball.ob=0;}
         if(py<orbit.by&&ball.y>=orbit.by&&ball.vy>0&&ball.ot>0){
@@ -878,17 +926,13 @@ function makeSim(){
         if(rv<0){p.vx+=rv*ux;p.vy+=rv*uy;q.vx-=rv*ux;q.vy-=rv*uy;}
       }
     }
-    for(bi=0;bi<balls.length;bi++){     // a ball-ball push must not shove a lair ball through a wall
-      b=balls[bi];
-      if(b.lv===1){if(b.x<lair.x0+9.5)b.x=lair.x0+9.5;if(b.x>lair.x1-9.5)b.x=lair.x1-9.5;if(b.y<lair.y0+9.5)b.y=lair.y0+9.5;}
-    }
     if(rolls[0].lit&&rolls[1].lit&&rolls[2].lit){
       rolls.forEach(function(z){z.lit=false;});
       if(st.mult<5)st.mult++;
       if(st.mult>st.maxMult)st.maxMult=st.mult;
       pts(1000);emit('bonus',st.mult);recruit(2);
     }
-    if(st.save>0){for(k=0;k<balls.length;k++)if(balls[k].x<=360){st.save-=dt;break;}}
+    if(st.save>0){for(k=0;k<balls.length;k++)if(balls[k].x<=360&&balls[k].lv===0&&balls[k].lr!==1){st.save-=dt;break;}}
     if(st.mb&&!st.wiz&&balls.length+st.queue<=1){st.mb=false;emit('mbend');}
     if(balls.length===0&&st.queue===0){
       if(st.save>0){st.save=0;st.saveUsed=true;placeBall();emit('save');}
@@ -902,7 +946,7 @@ function makeSim(){
           st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();emit('over');
           st.match=(Math.random()*10)|0;st.matchWin=st.match===(Math.floor(st.score/10)%10);emit('match',st.match*10);
         }
-        else{placeBall();st.kick=true;resetBank();emit('drain');if(again)emit('shootAgain');st.magnet=st.tideIn;}
+        else{placeBall();st.kick=true;st.lairOpen=true;lairCrests=0;resetBank();emit('drain');if(again)emit('shootAgain');st.magnet=st.tideIn;}
       }
     }
     st.mode=mode();
@@ -910,8 +954,12 @@ function makeSim(){
   function step(dt){if(dt>0.034)dt=0.034;var h=dt/SUB;for(var k=0;k<SUB;k++)sub(h);st.time+=dt;}
   function setFlipper(k,on){
     if(st.video&&on&&!flippers[k].pressed){var v=st.video;v.x=k===0?Math.max(0,v.x-1):Math.min(videoDef.lanes-1,v.x+1);emit('videoMove',v.x);}   // video mode: a new press moves the hero one lane
-    if(k===1)lair.flipper.pressed=on;if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
-  return {awards:AW,W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,top:top,lair:lair,missionDefs:missionDefs,shield:shield,magnet:magnet,videoDef:videoDef,flippers:flippers,balls:balls,st:st,events:events,
+    if(on&&!flippers[k].pressed&&!st.video&&!st.over&&!upNow()){   // lane change: a new press moves the lit top lamps one step that way
+      var L0=[rolls[0].lit,rolls[1].lit,rolls[2].lit],nl=(L0[0]?1:0)+(L0[1]?1:0)+(L0[2]?1:0),q;
+      if(nl>0&&nl<3)for(q=0;q<3;q++)rolls[q].lit=k===0?L0[(q+1)%3]:L0[(q+2)%3];
+    }
+    lair.flippers[k].pressed=on;if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
+  return {awards:AW,W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,top:top,lair:lair,beacon:beacon,lairView:lairView,missionDefs:missionDefs,shield:shield,magnet:magnet,videoDef:videoDef,flippers:flippers,balls:balls,st:st,events:events,
           step:step,launch:launch,inLane:inLane,newGame:newGame,setFlipper:setFlipper,tip:tip};
 }
 </script>
@@ -1104,7 +1152,7 @@ function makeSim(){
       else if(e.t==='jackpot'){found.jackpot=1;tshake(5);lampSweep(C.brass,-1);panel('JACKPOT!','',C.brass,C.deep,-1);beep(880,0.5,'square',0.1,2200);}
       else if(e.t==='mbend'){beep(500,0.25,'triangle',0.08,250);}
       else if(e.t==='combo'){panel('COMBO x'+e.v,'KEEP THE CHAIN GOING',C.mint,C.deep,-1);beep(700,0.2,'triangle',0.1,1400);}
-      else if(e.t==='sling'){flash.sling=1;if(e.x!==undefined&&e.y!==undefined&&Math.random()<0.5)pop('TWANG!',e.x,e.y-16,e.y<0);beep(190,0.07,'sawtooth',0.07,120);}
+      else if(e.t==='sling'){flash.sling=1;if(e.x!==undefined&&e.y!==undefined&&Math.random()<0.5)pop('TWANG!',e.x,e.y-16,sim.lairView());beep(190,0.07,'sawtooth',0.07,120);}
       else if(e.t==='roll'){beep(990,0.07,'sine',0.1);}
       else if(e.t==='bonus'){flash.bonus=1;beep(660,0.35,'triangle',0.11,1760);}
       else if(e.t==='flip'){beep(130,0.04,'square',0.05,90);}
@@ -1142,12 +1190,19 @@ function makeSim(){
       else if(e.t==='wizardStart'){game.wiz++;wizT0=0;lampSweep(WIZC,1);panel('LAST STAND!','RAMPS ARE SUPER JACKPOTS',WIZC,C.deep,-1);beep(90,0.9,'sawtooth',0.1,260);beep(180,0.7,'square',0.06,520);}
       else if(e.t==='superJackpot'){flash.jack=1;tshake(7);lampSweep(C.brass,-1);panel('SUPER JACKPOT','NUMBER '+e.v,C.brass,C.deep,-1);beep(660,0.5,'square',0.1,2640);beep(990,0.35,'triangle',0.08,1980);}
       else if(e.t==='wizardEnd'){if(e.v>game.sj)game.sj=e.v;panel('LAST STAND OVER',e.v+(e.v===1?' SUPER JACKPOT':' SUPER JACKPOTS'),WIZC,C.deep,-1);beep(600,0.7,'triangle',0.09,120);}
-      else if(e.t==='lairOpen'){panel('LAIR OPEN!','ROOFTOP RUN SHOT',BARON,C.cream,-1);beep(196,0.4,'sawtooth',0.08,392);beep(294,0.5,'triangle',0.07,588);}
+      else if(e.t==='lairOpen'){panel('LAIR OPEN!','EITHER RAMP GOES UP',BARON,C.cream,-1);beep(196,0.4,'sawtooth',0.08,392);beep(294,0.5,'triangle',0.07,588);}
       else if(e.t==='lairEnter'){flash.lairIn=1;panel("MEANWHILE, IN GLOOM'S LAIR...",'',C.yel,C.deep,-1,'cap');tune([[262,0.14],[196,0.14],[147,0.3,110]]);}
       else if(e.t==='guard'){flash.guard[e.v]=1;pop('THWACK!',e.x,e.y-16,true,C.coral);beep(420+e.v*90,0.09,'square',0.09,260+e.v*60);}
-      else if(e.t==='vaultLit'){panel('VAULT LIT!','ALL GUARDS HIT',C.yel,C.deep,-1);tune([[440,0.08],[587,0.08],[880,0.08],[1175,0.25,1568]]);}
+      else if(e.t==='vaultLit'){panel('VAULT LIT!','FLIP THE BALL INTO IT',C.yel,C.deep,-1);tune([[440,0.08],[587,0.08],[880,0.08],[1175,0.25,1568]]);}
       else if(e.t==='vault'){flash.vault=1;if(e.v===1){tshake(5);lampSweep(C.yel,1);panel('JACKPOT!','THE VAULT BLOWS OPEN',C.yel,C.deep,-1);pop('WHOOM!',e.x,e.y+34,true,C.coral);tune([[392,0.1],[523,0.1],[659,0.1],[784,0.1],[1046,0.35,1568]]);}else{pop('KA-CHUNK!',e.x,e.y+34,true,C.coral);beep(240,0.3,'sine',0.1,110);}}
-      else if(e.t==='lairExit'){pop('VWOOSH!',e.x,e.y+18,true,C.blu);beep(520,0.35,'triangle',0.08,200);}
+      else if(e.t==='lairExit'){pop('VWOOSH!',e.x,e.y-30,true,C.blu);beep(520,0.35,'triangle',0.08,200);}
+      else if(e.t==='lairSave'){pop('NOT YET!',e.x,e.y,true,C.coral);panel('LAIR SAVE!','ONE MORE TRY UPSTAIRS',BARON,C.cream,-1);beep(330,0.25,'square',0.08,660);}
+      else if(e.t==='throne'){flash.vault=Math.max(flash.vault,0.4);pop('KA-RANG!',e.x,e.y,true,C.coral);panel('THRONE RAMP!','+'+(sim.awards.throne*e.v).toLocaleString()+' LIGHTS A GUARD',C.yel,C.deep,-1);tune([[392,0.07],[523,0.07],[784,0.2,1046]]);}
+      else if(e.t==='throneFail'){beep(260,0.35,'triangle',0.08,80);}
+      else if(e.t==='guardLit'){flash.guard[e.v]=1;}
+      else if(e.t==='lairLevel'){lampSweep(BARON,-1);panel('LAIR LEVEL '+e.v+'!','NEXT JACKPOT '+sim.awards.vault[e.v-1].toLocaleString(),BARON,C.cream,-1);}
+      else if(e.t==='beacon'){pop('BLEEP!',e.x,e.y+20,false,C.coral);panel('SIGNAL BEACON!','LAIR IS OPEN',C.yel,C.deep,-1);beep(880,0.12,'square',0.08,1320);}
+      else if(e.t==='loop'){pop('ZOOM!',e.x-20,e.y,false,C.blu);panel('TOP LOOP!','+'+sim.awards.loop.toLocaleString()+(e.v%2===0?'  LAIR IS OPEN':''),C.mint,C.deep,-1);tune([[523,0.06],[784,0.06],[1046,0.18]]);}
       else if(e.t==='shieldUp'){shV=Math.max(shV,0.02);flash.shUp=1;panel('SHIELD UP!','BREAK IT IN 3 HITS',BARON,C.cream,-1);beep(140,0.6,'sawtooth',0.09,420);beep(280,0.5,'square',0.05,840);}
       else if(e.t==='shieldHit'){flash.shHit=1;pop('BLAMM!',e.x,e.y-22,false,C.coral);beep(160,0.16,'sawtooth',0.11,60);beep(900,0.08,'square',0.06,300);}
       else if(e.t==='shieldDown'){shV=0;flash.shat=1;shShards=[];for(var q=0;q<12;q++)shShards.push({x:sim.shield.x0+(sim.shield.x1-sim.shield.x0)*q/11,y:sim.shield.y0+(sim.shield.y1-sim.shield.y0)*q/11-8,vx:(Math.random()-0.5)*130,vy:-50-Math.random()*110,r:Math.random()*6,w:(Math.random()-0.5)*14,s:5+Math.random()*7});tshake(5);say('MY SHIELD! DO YOU KNOW WHAT THAT COST?');panel('SHIELD SMASHED!','',C.yel,C.deep,-1);beep(90,0.5,'sawtooth',0.12,40);beep(1200,0.3,'square',0.07,200);}
@@ -1202,11 +1257,11 @@ function makeSim(){
   }
 
   /* ---------- 3D look: tilted canvas, lifted objects, cached art ---------- */
-  var TILT=20,PK=1.7,QS=1.02,TP=28-sim.top,ZR=34,LZ=26,KX=0.002,SA=Math.sin(TILT*Math.PI/180),CA=Math.cos(TILT*Math.PI/180);
+  var TILT=20,PK=1.7,QS=1.02,TP=28-sim.top,ZR=34,KX=0.002,SA=Math.sin(TILT*Math.PI/180),CA=Math.cos(TILT*Math.PI/180);
   var FB='"Barlow Condensed","Arial Narrow",Arial,sans-serif',FD='Bungee,"Arial Black",sans-serif';
-  var sx=1,sy=1,cwp=1,chp=1,flc=null,rlc=null,mc=ctx,LX=0,LY=0,shSpr=null,ballSpr=null,backEl=el('back'),PT={};
+  var offY=0,vu=0,sx=1,sy=1,cwp=1,chp=1,flc=null,rlc=null,llc=null,mc=ctx,LX=0,LY=0,shSpr=null,ballSpr=null,backEl=el('back'),PT={};
   function lift(x,y,z){LX=x+(200-x)*z*KX;LY=y-z;}      // where a point at height z (lift units) shows up
-  function T(g){g.setTransform(dpr*sx,0,0,dpr*sy,0,dpr*TP*sy);}
+  function T(g){g.setTransform(dpr*sx,0,0,dpr*sy,0,dpr*(TP+offY)*sy);}   // offY shifts a whole scene while the view pans between the tables
   function shad(x,y,rx,ry,a){ctx.globalAlpha=a;ctx.drawImage(shSpr,x-rx,y-ry,rx*2,ry*2);ctx.globalAlpha=1;}   // soft shadow on the felt, no blur
   function pill(x,y,w,h,fill){var r=h/2;ctx.beginPath();ctx.moveTo(x+r,y);ctx.arc(x+w-r,y+r,r,-1.5708,1.5708);ctx.arc(x+r,y+r,r,1.5708,4.7124);ctx.closePath();ctx.fillStyle=fill;ctx.fill();}
   function cyl(x,y,r,z,side,top){                     // upright cylinder: stacked discs, lit cap
@@ -1254,12 +1309,6 @@ function makeSim(){
     for(k=0;k<n*2;k++){a=rnd(sd+k*5)*6.2832;l=r*(0.5+rnd(sd+k*7)*0.8);dr=0.8+rnd(sd+k)*1.5;g.moveTo(x+Math.cos(a)*l+dr,y+Math.sin(a)*l);g.arc(x+Math.cos(a)*l,y+Math.sin(a)*l,dr,0,6.2832);}
     g.fill();g.lineJoin='round';g.lineCap='round';
   }
-  function lairHull(){                                // the lair deck outline, from its wall endpoints (star-shaped around the middle)
-    var L=sim.lair,pts=[],k,sg,seen={},cx=(L.x0+L.x1)/2,cy=(L.y0+L.y1)/2,j,p,key,q;
-    for(k=0;k<L.segs.length;k++){sg=L.segs[k];q=[[sg.x1,sg.y1],[sg.x2,sg.y2]];for(j=0;j<2;j++){p=q[j];key=p[0]+','+p[1];if(!seen[key]){seen[key]=1;pts.push(p);}}}
-    pts.sort(function(a,b){return Math.atan2(a[1]-cy,a[0]-cx)-Math.atan2(b[1]-cy,b[0]-cx);});
-    return pts;
-  }
   function polyPath(g,P,dx,dy){var k;g.beginPath();for(k=0;k<P.length;k++)g.lineTo(P[k][0]+dx,P[k][1]+dy);g.closePath();}
   function sigil(g,x,y,r,a){                          // Baron Gloom's mark: a hooded face in a ring
     g.save();g.globalAlpha=a;g.translate(x,y);g.lineJoin='round';
@@ -1294,11 +1343,11 @@ function makeSim(){
   function buildFloor(){
     var g=ctx,k,s,gr,h=sim.hideout,kb=sim.kickback,o=sim.orbit,tv,L=sim.lair,sc=sx*dpr,wd,a;
     g.save();g.setTransform(1,0,0,1,0,0);g.fillStyle=INK;g.fillRect(0,0,flc.width,flc.height);g.restore();
-    // cabinet backglass above the table: purple dark with radiating rays, the lair's level
+    // cabinet backglass above the table: purple dark with radiating rays, where the lair wires go up
     g.save();g.beginPath();g.rect(4,-TP+6,W-8,TP+190);g.clip();
     g.fillStyle='#0f0a24';g.fillRect(0,-TP,W,TP+200);
     g.fillStyle='#181038';
-    for(k=0;k<30;k+=2){a=k*Math.PI/15;g.beginPath();g.moveTo(200,-96);g.lineTo(200+Math.cos(a)*420,-96+Math.sin(a)*420);g.lineTo(200+Math.cos(a+Math.PI/15)*420,-96+Math.sin(a+Math.PI/15)*420);g.closePath();g.fill();}
+    for(k=0;k<30;k+=2){a=k*Math.PI/15;g.beginPath();g.moveTo(200,-12);g.lineTo(200+Math.cos(a)*420,-12+Math.sin(a)*420);g.lineTo(200+Math.cos(a+Math.PI/15)*420,-12+Math.sin(a+Math.PI/15)*420);g.closePath();g.fill();}
     g.fillStyle=PT.purple;g.globalAlpha=0.6;g.fillRect(0,-TP,W,TP+200);g.globalAlpha=1;
     g.restore();
     g.strokeStyle=INK;g.lineWidth=3;g.strokeRect(4,-TP+6,W-8,TP+190);
@@ -1344,49 +1393,39 @@ function makeSim(){
     }
     // misregistered table outline: a red plate a hair off the black one
     g.save();tableShape(g);g.strokeStyle='rgba(232,55,43,.8)';g.lineWidth=2.5;g.translate(2,2);tableShape(g);g.stroke();g.restore();
-    buildLair(g);
   }
-  function buildLair(g){                               // Gloom's Lair: a raised mini table above the main table's top arc
-    var L=sim.lair,H2=lairHull(),k,sg,a,lx,ly,fx,gr,dx=14,dy=LZ+22,k0=1-KX*LZ;
-    // drop shadow on the main table's top area
-    g.save();tableShape(g);g.clip();polyPath(g,H2,dx,dy);g.fillStyle='rgba(8,6,20,.4)';g.fill();g.fillStyle=PT.ink;g.fill();g.restore();
-    // support posts and a frame bar, standing on the arc
-    var legs=[L.x0+22,(L.x0+L.x1)/2,L.x1-22];
-    g.lineCap='butt';
-    for(k=0;k<3;k++){
-      lx=legs[k];ly=190-Math.sqrt(190*190-(lx-200)*(lx-200))+16;
-      g.fillStyle='rgba(8,6,20,.45)';g.beginPath();g.ellipse(lx+4,ly+2,10,4,0,0,6.2832);g.fill();
-      g.fillStyle=C.brass;g.strokeStyle=INK;g.lineWidth=2.5;g.fillRect(lx-3.5,-70,7,ly+70);g.strokeRect(lx-3.5,-70,7,ly+70);
-      g.fillStyle='#7a4f12';g.fillRect(lx+0.5,-70,3,ly+70);
-      g.fillStyle=C.brass;g.beginPath();g.ellipse(lx,ly,9,3.5,0,0,6.2832);g.fill();g.stroke();
-    }
-    g.lineWidth=2.5;g.strokeStyle=INK;g.fillStyle='#e2a92c';g.fillRect(legs[0],-8,legs[2]-legs[0],6);g.strokeRect(legs[0],-8,legs[2]-legs[0],6);
-    // the deck, lifted LZ
-    g.save();g.transform(k0,0,0,1,200*KX*LZ,-LZ);g.lineJoin='round';
-    polyPath(g,H2,0,9);g.fillStyle='#0d0818';g.fill();g.lineWidth=3;g.strokeStyle=INK;g.stroke();        // deck thickness
-    polyPath(g,H2,0,0);g.fillStyle='#3a1b73';g.fill();
-    g.save();polyPath(g,H2,0,0);g.clip();
-    g.fillStyle='#4a2790';
-    for(k=0;k<24;k+=2){a=k*Math.PI/12;g.beginPath();g.moveTo(L.vault.x,L.vault.y);g.lineTo(L.vault.x+Math.cos(a)*300,L.vault.y+Math.sin(a)*300);g.lineTo(L.vault.x+Math.cos(a+Math.PI/12)*300,L.vault.y+Math.sin(a+Math.PI/12)*300);g.closePath();g.fill();}
-    g.fillStyle=PT.purple;g.fillRect(L.x0,L.y0,L.x1-L.x0,L.y1-L.y0+20);
-    g.strokeStyle=PT.dark;g.lineWidth=40;polyPath(g,H2,0,0);g.stroke();
+  function buildUpper(){                               // Gloom's Lair: the upper table's static art (its own full screen)
+    var g=ctx,L=sim.lair,k,sg,a,v=L.vault,SL=[[60,480,60,550,105,580],[340,480,340,550,295,580]];
+    g.save();g.setTransform(1,0,0,1,0,0);g.fillStyle=INK;g.fillRect(0,0,llc.width,llc.height);g.restore();
+    g.save();g.beginPath();g.rect(4,-TP+6,W-8,TP+190);g.clip();                       // backglass: night sky over the lair
+    g.fillStyle='#0a0618';g.fillRect(0,-TP,W,TP+200);g.fillStyle='#160d33';
+    for(k=0;k<30;k+=2){a=k*Math.PI/15;g.beginPath();g.moveTo(200,-12);g.lineTo(200+Math.cos(a)*420,-12+Math.sin(a)*420);g.lineTo(200+Math.cos(a+Math.PI/15)*420,-12+Math.sin(a+Math.PI/15)*420);g.closePath();g.fill();}
+    g.restore();g.strokeStyle=INK;g.lineWidth=3;g.strokeRect(4,-TP+6,W-8,TP+190);
+    tableShape(g);g.fillStyle='#2a1356';g.fill();
+    g.save();tableShape(g);g.clip();
+    g.fillStyle='#3a1b73';
+    for(k=0;k<36;k+=2){a=k*Math.PI/18;g.beginPath();g.moveTo(v.x,v.y);g.lineTo(v.x+Math.cos(a)*900,v.y+Math.sin(a)*900);g.lineTo(v.x+Math.cos(a+Math.PI/18)*900,v.y+Math.sin(a+Math.PI/18)*900);g.closePath();g.fill();}
+    g.fillStyle=PT.purple;g.fillRect(0,0,W,H);
+    g.strokeStyle='#160a33';g.lineWidth=40;tableShape(g);g.stroke();
+    g.strokeStyle=PT.dark;g.lineWidth=70;tableShape(g);g.stroke();
+    g.fillStyle=PT.dark;g.fillRect(0,H-150,W,150);
     g.restore();
-    crackle(g,L.x0+26,L.y1-34,30,5,11,'#c9a6ff',1.4);crackle(g,L.x1-30,L.y0+62,30,5,29,'#c9a6ff',1.4);crackle(g,(L.x0+L.x1)/2-58,L.y0+34,24,4,47,'#c9a6ff',1.2);
-    sigil(g,(L.x0+L.x1)/2,(L.y0+L.y1)/2-6,15,0.95);
-    g.textAlign='center';g.textBaseline='middle';g.font='700 10px '+FB;
-    g.fillStyle=C.coral;g.fillText("GLOOM'S LAIR",(L.x0+L.x1)/2+1.5,L.y1-56.5);g.fillStyle=C.yel;g.fillText("GLOOM'S LAIR",(L.x0+L.x1)/2,L.y1-58);
-    // exit opening in the floor, bottom left
-    var ex=L.exit;g.fillStyle='#02030a';g.fillRect(ex.x0,ex.y-4,ex.x1-ex.x0,16);g.strokeStyle=INK;g.lineWidth=2;g.strokeRect(ex.x0,ex.y-4,ex.x1-ex.x0,16);
-    g.fillStyle='rgba(255,212,38,.8)';g.beginPath();g.moveTo(ex.x0+5,ex.y);g.lineTo(ex.x1-5,ex.y);g.lineTo((ex.x0+ex.x1)/2,ex.y+8);g.closePath();g.fill();
-    // walls
-    for(k=0;k<L.segs.length;k++){sg=L.segs[k];if(sg.id==='sling')rail(sg.x1,sg.y1,sg.x2,sg.y2,5,5,C.coral,'#7d1f16');else rail(sg.x1,sg.y1,sg.x2,sg.y2,12,5,'#c9a6ff','#4a2a9a');}
-    g.restore();
+    crackle(g,70,250,34,5,11,'#c9a6ff',1.4);crackle(g,330,420,34,5,29,'#c9a6ff',1.4);crackle(g,120,470,26,4,47,'#c9a6ff',1.2);crackle(g,300,250,24,4,61,'#c9a6ff',1.2);
+    sigil(g,200,450,44,0.5);
+    g.textAlign='center';g.textBaseline='middle';g.font='22px '+FD;
+    g.fillStyle=C.coral;g.fillText("GLOOM'S LAIR",201.5,531.5);g.fillStyle=C.yel;g.fillText("GLOOM'S LAIR",200,530);
+    for(k=0;k<2;k++){var q=SL[k];g.fillStyle='rgba(232,55,43,.45)';g.beginPath();g.moveTo(q[0],q[1]);g.lineTo(q[2],q[3]);g.lineTo(q[4],q[5]);g.closePath();g.fill();g.fillStyle=PT.ink;g.fill();}
+    g.fillStyle='rgba(255,212,38,.75)';g.font='700 10px '+FB;g.fillText('EXIT',185,705);       // the drain between the lair flippers leads back down
+    for(k=0;k<L.segs.length;k++){sg=L.segs[k];if(sg.id==='sling')rail(sg.x1,sg.y1,sg.x2,sg.y2,6,5,C.coral,'#7d1f16');else rail(sg.x1,sg.y1,sg.x2,sg.y2,9,4,'#c9a6ff','#4a2a9a');}
+    g.save();tableShape(g);g.strokeStyle='rgba(232,55,43,.8)';g.lineWidth=2.5;g.translate(2,2);tableShape(g);g.stroke();g.restore();
+    rampArt(L.ramp,2);
   }
-  function buildRamps(){
-    var g=ctx,i,r,P,n,c,k,j,nm,HW=11,Lp,Rp,e,z,mx,my,ax,ay,bx,by,fs,sd;
+  function buildRamps(){for(var i=0;i<sim.ramps.length;i++)rampArt(sim.ramps[i],i);}
+  function rampArt(r,i){                               // one ramp: track to the crest, then the twin-wire return (main ramps, and the lair's Throne Ramp)
+    var g=ctx,P,n,c,k,j,nm,HW=11,Lp,Rp,e,z,mx,my,ax,ay,bx,by,fs,sd;
     g.lineCap='round';g.lineJoin='round';
-    for(i=0;i<sim.ramps.length;i++){
-      r=sim.ramps[i];P=r.path;n=P.length;c=r.crest;Lp=[];Rp=[];
+    {
+      P=r.path;n=P.length;c=r.crest;Lp=[];Rp=[];
       for(k=0;k<=c;k++){
         if(k===0){Lp.push([r.ex0,r.ey]);Rp.push([r.ex1,r.ey]);}
         else{nm=norm(P,k);Lp.push([P[k].x-nm[0]*HW,P[k].y-nm[1]*HW]);Rp.push([P[k].x+nm[0]*HW,P[k].y+nm[1]*HW]);}
@@ -1600,7 +1639,7 @@ function makeSim(){
     }
   }
   function buildLamps(){
-    var L=[],k,b,l,r,h=sim.hideout,kb=sim.kickback,G=sim.lair;
+    var L=[],k,b,l,r,h=sim.hideout,kb=sim.kickback;
     function add(x,y,rad,lair){L.push({x:x,y:y,r:rad,lair:lair?1:0});}
     for(k=0;k<3;k++){b=sim.rolls[k];add(b.x,b.y,10);}
     for(k=0;k<3;k++){b=sim.bumpers[k];add(b.x,b.y-12,b.r-6);}
@@ -1609,8 +1648,6 @@ function makeSim(){
     for(k=0;k<2;k++){b=sim.targets[k];add(b.x+(k?-4:4),b.y,9);}
     for(k=0;k<3;k++){b=sim.drops[k];add(b.x,b.y-4,8);}
     add(h.x,h.y-34,9);add(kb.x,(kb.y1+kb.y2)/2+4,8);
-    for(k=0;k<3;k++){b=G.guards[k];add(b.x,b.y-7,13,1);}
-    add(G.vault.x,G.vault.y,22,1);
     for(k=0;k<L.length;k++)L[k].i=k;
     LAMPS=L;
   }
@@ -1632,45 +1669,44 @@ function makeSim(){
       if(pm===0)ctx.fillRect(0,sim.top+(H-sim.top)*(fr-0.12),W,(H-sim.top)*0.2);else ctx.fillRect(W*(fr-0.1),sim.top,W*0.18,H-sim.top);
       ctx.restore();
     }
-    for(pass=0;pass<2;pass++){
-      if(pass){ctx.save();lairT();}
+    {
       for(k=0;k<LAMPS.length;k++){
-        l=LAMPS[k];if(l.lair!==pass)continue;
+        l=LAMPS[k];
         v=at?lampV(l,pm,tt,sp)*at:0;v2=0;
-        if(sw){ph=(l.lair?(l.y+LZ-sim.top)/(H-sim.top)*0.5:(l.y-sim.top)/(H-sim.top));if(sw.dir<0)ph=1-ph;fr=u*1.5-0.2;v2=Math.max(0,1-Math.abs(ph-fr)/0.25);}
+        if(sw){ph=(l.y-sim.top)/(H-sim.top);if(sw.dir<0)ph=1-ph;fr=u*1.5-0.2;v2=Math.max(0,1-Math.abs(ph-fr)/0.25);}
         m=Math.max(v,v2);if(m<0.06)continue;
         col=v2>=v?sw.col:LC[k%4];
         ctx.globalAlpha=Math.min(1,m)*0.6;disc(l.x,l.y,l.r+8,col);
         ctx.globalAlpha=Math.min(1,m*1.1);disc(l.x,l.y,l.r*0.7,col);ctx.strokeStyle=C.cream;ctx.lineWidth=1.6;ctx.beginPath();ctx.arc(l.x,l.y,l.r*0.7,0,6.2832);ctx.stroke();
       }
-      if(pass)ctx.restore();
     }
     ctx.globalAlpha=1;
   }
-  function pz(P,cum,kind,k){var h=P[k].h;return kind===1?h*ZR+(1-h)*LZ:Math.max(h*ZR,LZ*Math.max(0,1-cum[k]/120));}   // wire height: ramp 1 branch lands on the lair deck, the exit starts there
+  function pz(P,cum,kind,k){return P[k].h*ZR;}        // wire height
   function wirePath(g,P,cum,kind,off){var k,nm;g.beginPath();for(k=0;k<P.length;k++){nm=norm(P,k);lift(P[k].x+nm[0]*off,P[k].y+nm[1]*off,pz(P,cum,kind,k));g.lineTo(LX,LY);}}
-  function buildWires(){                               // the lair branch of the Rooftop Run and the lair exit wire: faint twin wires, brighter live overlay while the lair is open
-    var g=ctx,r=sim.ramps[1],L=sim.lair,sets=[[r.lairPath,r.lairCum,1],[L.exitPath,L.exitCum,2]],q,P,cum,k,j,i;
+  function buildWires(){                               // the lair branches of both ramps and the lair exit wire: faint twin wires, brighter live overlay while the lair is open
+    var g=ctx,R0=sim.ramps[0],R1=sim.ramps[1],L=sim.lair,sets=[[R0.lairPath,R0.lairCum,1],[R1.lairPath,R1.lairCum,1],[L.exitPath,L.exitCum,2]],q,P,cum,k,j,i;
     g.lineCap='round';g.lineJoin='round';
-    for(q=0;q<2;q++){
+    for(q=0;q<sets.length;q++){
       P=sets[q][0];cum=sets[q][1];
       g.strokeStyle='rgba(8,6,20,.28)';g.lineWidth=3;g.beginPath();for(k=0;k<P.length;k++){if(P[k].y<20)continue;g.lineTo(P[k].x+4,P[k].y+7);}g.stroke();
       g.strokeStyle='rgba(244,232,200,.55)';g.lineWidth=1.6;
-      for(k=1;k<P.length-1;k++){if(P[k].y<40||P[k].h<0.3)continue;lift(P[k].x,P[k].y,pz(P,cum,q+1,k));g.beginPath();g.moveTo(P[k].x,P[k].y);g.lineTo(LX,LY);g.stroke();}
+      for(k=1;k<P.length-1;k++){if(P[k].y<40||P[k].h<0.3)continue;lift(P[k].x,P[k].y,pz(P,cum,sets[q][2],k));g.beginPath();g.moveTo(P[k].x,P[k].y);g.lineTo(LX,LY);g.stroke();}
       for(i=0;i<2;i++){
         g.strokeStyle=i?'#b58cff':INK;g.lineWidth=i?2:4.6;
-        for(j=-1;j<=1;j+=2){wirePath(g,P,cum,q+1,4.5*j);g.stroke();}
+        for(j=-1;j<=1;j+=2){wirePath(g,P,cum,sets[q][2],4.5*j);g.stroke();}
       }
     }
   }
   function buildLayers(){
     if(!shSpr)sprites();
     function mk(){var c=document.createElement('canvas');c.width=cv.width;c.height=cv.height;return c;}
-    flc=mk();rlc=mk();
+    flc=mk();rlc=mk();llc=mk();offY=0;
     ctx=flc.getContext('2d');T(ctx);
     PT.light=mkdots(8,1.5,'rgba(244,232,200,.14)',sx*dpr);PT.dark=mkdots(5,1.35,'rgba(8,6,20,.5)',sx*dpr);PT.ink=mkdots(4,1.1,'rgba(8,6,20,.7)',sx*dpr);PT.purple=mkdots(7,1.7,'rgba(150,110,255,.2)',sx*dpr);
     buildFloor();
     ctx=rlc.getContext('2d');T(ctx);buildRamps();buildWires();
+    ctx=llc.getContext('2d');T(ctx);buildUpper();
     ctx=mc;
   }
 
@@ -2125,7 +2161,7 @@ function makeSim(){
       if(hot){ctx.globalAlpha=0.2+0.14*pu;disc(cx,r.ey+17,24+3*pu,wz?WIZC:HERO[0].c);ctx.globalAlpha=1;}
       arrow(cx,r.ey+17,hot?1.25+0.25*pu:m?1+0.16*pu:1,hot?(wz?(pu>0?WIZC:C.cream):HERO[0].c):m?C.brass:C.mint,hot?1:m?0.85+0.15*pu:0.4);
       if(s.lockLit)lockSign(cx,r.ey+41,now);
-      if(i===1&&s.lairOpen&&!s.over)sign(cx,r.ey+(s.lockLit?64:41),now,'LAIR OPEN',BARON,C.cream,60);
+      if(s.lairOpen&&!s.over)sign(cx,r.ey+(s.lockLit?64:41),now,'LAIR OPEN',BARON,C.cream,60);
     }
     if(startsMode()){                                    // hero emblem beside the Hideout, drawn over the ramp wires
       hc2=s.wizLit?WIZC:HERO[s.mq[0]].c;disc(hh.x-30,hh.y+2,14,C.deep);disc(hh.x-30,hh.y+2,12.5,hc2);
@@ -2143,10 +2179,7 @@ function makeSim(){
     lift(s.x-s.w,s.y,za);disc(LX,LY,2.6,C.cream);lift(s.x+s.w,s.y,za);disc(LX,LY,2.6,C.cream);
   }
 
-  function ballZ(b){                                  // lift of a ball: lair balls ride the raised deck, the lair wire blends from the Run's crest height down to the deck
-    if(b.lv===1)return LZ+5;
-    if(b.lr===1)return b.h*ZR+(1-b.h)*LZ+5;
-    if(b.lr===2)return Math.max(b.h*ZR,LZ*Math.max(0,1-b.rs/120))+5;
+  function ballZ(b){                                  // lift of a ball: its ramp or wire height
     return b.h*ZR+5;
   }
   function drawBallAt(b){
@@ -2165,10 +2198,8 @@ function makeSim(){
     ctx.strokeStyle=C.cream;ctx.lineWidth=2;line(fl.px,fl.py-6,tp.x,tp.y-6);
     disc(fl.px,fl.py-6,4.5,INK);disc(fl.px,fl.py-6,1.8,C.cream);
   }
-  function lairT(){ctx.save();ctx.transform(1-KX*LZ,0,0,1,200*KX*LZ,-LZ);}   // draw lair things on the raised deck
-  function drawLair(now){
+  function drawVault(now){                            // the lair's vault and Gloom's Guards (dynamic parts)
     var L=sim.lair,s=sim.st,k,g,v=L.vault,pu=calm?1:0.5+0.5*Math.sin(now/130),lit=s.vaultLit,vf=flash.vault,j,an,sd=Math.floor(now/90),rr;
-    lairT();
     shad(v.x+2,v.y+4,v.r+12,v.r+8,0.45);
     if(lit){                                            // lit vault: rotating burst and crackle
       ctx.fillStyle=C.yel;ctx.globalAlpha=0.35+0.25*pu;ctx.beginPath();
@@ -2189,8 +2220,34 @@ function makeSim(){
       ctx.beginPath();ctx.arc(g.x,g.y,g.r,0.1,3.04);ctx.stroke();
       ctx.fillStyle=g.lit?C.coral:INK;ctx.beginPath();ctx.arc(g.x,g.y-7,3.2,0,6.2832);ctx.fill();
     }
-    drawFlipper(L.flipper);
+  }
+  function drawUpper(now){                            // the whole upper table: drawn instead of (or, mid-pan, above) the main table
+    var s=sim.st,L=sim.lair,k,b,rm=L.ramp,cx=(rm.ex0+rm.ex1)/2,need=!(L.guards[0].lit&&L.guards[1].lit&&L.guards[2].lit),pu=calm?0:Math.sin(now/130),lv=s.lairLv,jv=sim.awards.vault[lv-1];
+    ctx=mc;ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(llc,0,offY*sy*dpr);T(ctx);
+    ctx.lineCap='round';ctx.lineJoin='round';
+    for(k=0;k<L.segs.length;k++){b=L.segs[k];if(b.id==='sling'&&flash.sling>0.05){lift(b.x1,b.y1,6);var ax=LX,ay=LY;lift(b.x2,b.y2,6);ctx.strokeStyle=C.cream;ctx.lineWidth=5;line(ax,ay,LX,LY);}}
+    ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';                 // level and jackpot readout on the felt
+    for(k=0;k<3;k++){disc(170+k*30,212,9,INK);disc(170+k*30,212,7,k<lv?C.yel:'rgba(201,166,255,.25)');}
+    ctx.font='700 13px '+FB;ctx.fillStyle=C.cream;ctx.fillText('LAIR LEVEL '+lv,200,232);
+    ctx.font='16px '+FD;ctx.fillStyle=C.coral;ctx.fillText('JACKPOT '+jv.toLocaleString(),201.5,253.5);ctx.fillStyle=s.vaultLit?C.yel:'#c9a6ff';ctx.fillText('JACKPOT '+jv.toLocaleString(),200,252);
+    if(s.vaultLit){ctx.font='700 12px '+FB;ctx.fillStyle=C.yel;ctx.globalAlpha=0.7+0.3*pu;ctx.fillText('FLIP IT IN THE VAULT!',200,170);ctx.globalAlpha=1;}
     ctx.restore();
+    arrow(cx,rm.ey+17,need?1+0.16*pu:1,need?C.brass:C.mint,need?0.85+0.15*pu:0.4);   // the Throne Ramp lights a guard while any is still dark
+    drawVault(now);
+    if(!s.over)for(k=0;k<sim.balls.length;k++){b=sim.balls[k];if(b.lv===1&&b.rp<0)shad(b.x+1.5,b.y+3,sim.R*1.2,sim.R*0.9,0.6);}
+    drawFlipper(L.flippers[0]);drawFlipper(L.flippers[1]);
+    if(!s.over)for(k=0;k<sim.balls.length;k++){b=sim.balls[k];if(b.lv===1)drawBallAt(b);}
+    drawPops(1);
+  }
+  function drawBeacon(now){                           // Signal Beacon sweeping inside the top arc, and the Top Loop lane sign
+    var b=sim.beacon,pu=calm?1:0.5+0.5*Math.sin(now/90),k,an;
+    if(b.on&&!sim.st.over){
+      ctx.globalAlpha=0.3+0.3*pu;disc(b.x,b.y,b.r+9+pu*3,C.yel);ctx.globalAlpha=1;
+      disc(b.x,b.y,b.r+2.5,INK);disc(b.x,b.y,b.r,C.yel);disc(b.x,b.y,b.r-5,C.coral);
+      ctx.strokeStyle=INK;ctx.lineWidth=2;for(k=0;k<3;k++){an=-1.57+(k-1)*0.7;ctx.beginPath();ctx.arc(b.x,b.y,b.r+5+k*0,an-0.25,an+0.25);ctx.stroke();}
+      ctx.fillStyle=INK;ctx.font='700 8px '+FB;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('LAIR',b.x,b.y+0.5);
+    }
+    arrow(33,232,0.75,C.mint,0.45);ctx.save();ctx.translate(33,262);ctx.rotate(-1.5708);ctx.fillStyle='rgba(244,232,200,.7)';ctx.font='700 9px '+FB;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('TOP LOOP',0,0);ctx.restore();
   }
   function drawMagnet(now){                            // Tide's Undertow: a blue whirlpool while armed, a dark basin when spent
     var m=sim.magnet,held=m.t>0,on=sim.st.magnet||held,t=calm?0:now/1000,a,r,k,q,mf=flash.mag;
@@ -2242,17 +2299,45 @@ function makeSim(){
       ctx.globalAlpha=flash.shat;crackle(ctx,(S.x0+S.x1)/2,(S.y0+S.y1)/2-14,36*(1+a2),6,sd*3,C.yel,1.6);ctx.globalAlpha=1;
     }
   }
-  function drawWireOpen(now){                          // the lair branch glows while the lair is open
-    var r=sim.ramps[1],P=r.lairPath,pu=calm?1:0.6+0.4*Math.sin(now/110);
+  function drawWireOpen(now){                          // both lair branches glow while the lair is open
+    var r,P,pu=calm?1:0.6+0.4*Math.sin(now/110),i;
     if(!sim.st.lairOpen||sim.st.over)return;
-    wirePath(ctx,P,r.lairCum,1,0);ctx.strokeStyle='rgba(143,92,240,'+(0.35+0.2*pu).toFixed(2)+')';ctx.lineWidth=11;ctx.stroke();
-    ctx.strokeStyle=C.yel;ctx.lineWidth=3;ctx.setLineDash([9,9]);ctx.lineDashOffset=calm?0:-now/26;ctx.stroke();ctx.setLineDash([]);
-    lift(P[0].x,P[0].y,pz(P,r.lairCum,1,0));disc(LX,LY,7+pu*2,C.yel);disc(LX,LY,4,BARON);
+    for(i=0;i<2;i++){
+      r=sim.ramps[i];P=r.lairPath;
+      wirePath(ctx,P,r.lairCum,1,0);ctx.strokeStyle='rgba(143,92,240,'+(0.35+0.2*pu).toFixed(2)+')';ctx.lineWidth=11;ctx.stroke();
+      ctx.strokeStyle=C.yel;ctx.lineWidth=3;ctx.setLineDash([9,9]);ctx.lineDashOffset=calm?0:-now/26;ctx.stroke();ctx.setLineDash([]);
+      lift(P[0].x,P[0].y,pz(P,r.lairCum,1,0));disc(LX,LY,7+pu*2,C.yel);disc(LX,LY,4,BARON);
+    }
   }
 
-  function draw(now){
+  function drawPops(lair){                           // sound-effect bursts at the hit position, each on its own table
+    var k;
+    for(k=0;k<pops.length;k++){
+      var pp=pops[k];if(pp.lair!==lair)continue;var age=1-pp.t/pp.life,sz=16,grow=calm?1:(age<0.15?0.6+age/0.15*0.4:1);
+      ctx.save();ctx.translate(pp.x,pp.y);if(!calm)ctx.rotate(pp.rot);
+      ctx.font=sz+'px '+FD;ctx.textAlign='center';ctx.textBaseline='middle';
+      var tw=ctx.measureText(pp.text).width/2+sz*0.7,th=sz*1.15,n=14,j;
+      ctx.scale(grow,grow);
+      ctx.globalAlpha=Math.min(1,pp.t/(pp.life*0.3));
+      ctx.beginPath();
+      for(j=0;j<n*2;j++){var an=j*Math.PI/n,rr=j%2?0.78:1.12;ctx.lineTo(3+Math.cos(an)*tw*rr,3.5+Math.sin(an)*th*rr);}
+      ctx.closePath();ctx.fillStyle=INK;ctx.fill();
+      ctx.beginPath();
+      for(j=0;j<n*2;j++){an=j*Math.PI/n;rr=j%2?0.78:1.12;ctx.lineTo(Math.cos(an)*tw*rr,Math.sin(an)*th*rr);}
+      ctx.closePath();ctx.fillStyle=pp.col===C.coral?C.yel:C.cream;ctx.fill();ctx.strokeStyle=INK;ctx.lineWidth=3;ctx.stroke();
+      ctx.fillStyle=pp.col;ctx.fillText(pp.text,0.8,1.8);ctx.fillStyle=pp.col===C.coral?C.coral:INK;ctx.fillText(pp.text,0,1);
+      ctx.restore();
+    }
+  }
+  function draw(now){                                 // the view pans between the main table and the lair (vu 0 = main, 1 = lair)
+    var e=calm?Math.round(vu):vu*vu*(3-2*vu),PAN=H+TP;
+    if(e<1){offY=e*PAN;drawMain(now);}
+    if(e>0){offY=-(1-e)*PAN;drawUpper(now);}
+    offY=0;
+  }
+  function drawMain(now){
     var s=sim.st,k,b,f,p,fx=[],d,L=sim.lair;
-    ctx=mc;ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(flc,0,0);T(ctx);
+    ctx=mc;ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(flc,0,offY*sy*dpr);T(ctx);
     ctx.lineCap='round';ctx.lineJoin='round';
     if(s.mode==='wizard'){tableShape(ctx);ctx.globalAlpha=calm?0.2:0.16+0.08*Math.sin(now/90);ctx.fillStyle=WIZC;ctx.fill();ctx.globalAlpha=1;}   // Last Stand: the felt turns hot pink
     if(bossVis>0.02)drawVillain(now);
@@ -2260,8 +2345,7 @@ function makeSim(){
       b=sim.segs[k];
       if(b.id==='sling'&&flash.sling>0.05){lift(b.x1,b.y1,6);var ax=LX,ay=LY;lift(b.x2,b.y2,6);ctx.strokeStyle=C.cream;ctx.lineWidth=5;line(ax,ay,LX,LY);}
     }
-    drawLair(now);
-    drawLanes(now);drawHideout(now);
+    drawLanes(now);drawHideout(now);drawBeacon(now);
     for(k=0;k<3;k++){                                    // top lamps
       b=sim.rolls[k];
       disc(b.x,b.y,12,INK);disc(b.x,b.y,10,b.lit?C.mint:'rgba(70,198,214,.18)');
@@ -2317,20 +2401,19 @@ function makeSim(){
     }
     if(!s.over)for(k=0;k<sim.balls.length;k++){          // every ball's shadow stays on its own surface (felt, or the lair deck)
       b=sim.balls[k];f=Math.min(1,b.h);
-      if(b.lr===1||(b.lr===2&&b.y<8))continue;
-      if(b.lv===1)shad(b.x+1.5+(200-b.x)*LZ*KX,b.y+3-LZ,sim.R*1.2,sim.R*0.9,0.6);
-      else shad(b.x+1.5,b.y+3,sim.R*(1.2+0.3*f),sim.R*(0.9+0.2*f),0.6-0.25*f);
+      if(b.lv===1||b.lr===1||(b.lr===2&&b.y<8))continue;
+      shad(b.x+1.5,b.y+3,sim.R*(1.2+0.3*f),sim.R*(0.9+0.2*f),0.6-0.25*f);
     }
     drawFlipper(sim.flippers[0]);drawFlipper(sim.flippers[1]);
-    if(!s.over){for(k=0;k<sim.balls.length;k++){b=sim.balls[k];if(b.h<=0.001&&b.rp<0&&b.lr===0){if(b.mg){ctx.strokeStyle=INK;ctx.lineWidth=5;ctx.beginPath();ctx.arc(b.x,b.y-4,13,0,6.2832);ctx.stroke();ctx.strokeStyle=C.cream;ctx.lineWidth=2.2;ctx.beginPath();ctx.arc(b.x,b.y-4,13,0,6.2832);ctx.stroke();}drawBallAt(b);}}}
-    ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(rlc,0,0);T(ctx);   // ramps over everything on the felt
+    if(!s.over){for(k=0;k<sim.balls.length;k++){b=sim.balls[k];if(b.lv===0&&b.h<=0.001&&b.rp<0&&b.lr===0){if(b.mg){ctx.strokeStyle=INK;ctx.lineWidth=5;ctx.beginPath();ctx.arc(b.x,b.y-4,13,0,6.2832);ctx.stroke();ctx.strokeStyle=C.cream;ctx.lineWidth=2.2;ctx.beginPath();ctx.arc(b.x,b.y-4,13,0,6.2832);ctx.stroke();}drawBallAt(b);}}}
+    ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(rlc,0,offY*sy*dpr);T(ctx);   // ramps over everything on the felt
     ctx.lineCap='round';ctx.lineJoin='round';
     drawWireOpen(now);
     drawShots(now);drawSpinner();drawShield(now);
     for(k=0;k<2;k++){                                    // ramp crest crackle
       f=flash.crest[k];if(f>0.02&&!calm){var rp=sim.ramps[k],cp=rp.path[rp.crest];lift(cp.x,cp.y,cp.h*ZR);ctx.globalAlpha=Math.min(1,f*1.4);crackle(ctx,LX,LY-8,30*(1.3-f*0.4),7,Math.floor(now/60)*5+k,C.yel,1.8);ctx.globalAlpha=1;}
     }
-    if(!s.over){for(k=0;k<sim.balls.length;k++)if(sim.balls[k].h>0.001||sim.balls[k].rp>=0)drawBallAt(sim.balls[k]);}   // ramp balls ride on top
+    if(!s.over){for(k=0;k<sim.balls.length;k++)if(sim.balls[k].lv===0&&(sim.balls[k].h>0.001||sim.balls[k].rp>=0))drawBallAt(sim.balls[k]);}   // ramp balls ride on top
     if(s.mode==='wizard'&&!calm){var wz3=Math.floor(now/100);for(k=0;k<5;k++)crackle(ctx,40+rnd(wz3*3+k)*320,60+rnd(wz3*5+k*2)*600,24,3,wz3*7+k,WIZC,1.4);}
     if(!s.over){
       if(s.gold>0)fx.push('GOLD RUSH x3  '+Math.ceil(s.gold));
@@ -2360,22 +2443,7 @@ function makeSim(){
       tableShape(ctx);ctx.globalAlpha=0.3*flash.jack;ctx.fillStyle=C.brass;ctx.fill();
       ctx.globalAlpha=flash.jack;ctx.strokeStyle=C.cream;ctx.lineWidth=7;ctx.beginPath();ctx.arc(200,330,(1-flash.jack)*300,0,6.2832);ctx.stroke();ctx.globalAlpha=1;
     }
-    for(k=0;k<pops.length;k++){                          // sound-effect bursts at the hit position (lair ones ride the raised deck)
-      var pp=pops[k],age=1-pp.t/pp.life,sz=16,grow=calm?1:(age<0.15?0.6+age/0.15*0.4:1);
-      ctx.save();ctx.translate(pp.x+(pp.lair?(200-pp.x)*LZ*KX:0),pp.y-(pp.lair?LZ:0));if(!calm)ctx.rotate(pp.rot);
-      ctx.font=sz+'px '+FD;ctx.textAlign='center';ctx.textBaseline='middle';
-      var tw=ctx.measureText(pp.text).width/2+sz*0.7,th=sz*1.15,n=14,j;
-      ctx.scale(grow,grow);
-      ctx.globalAlpha=Math.min(1,pp.t/(pp.life*0.3));
-      ctx.beginPath();
-      for(j=0;j<n*2;j++){var an=j*Math.PI/n,rr=j%2?0.78:1.12;ctx.lineTo(3+Math.cos(an)*tw*rr,3.5+Math.sin(an)*th*rr);}
-      ctx.closePath();ctx.fillStyle=INK;ctx.fill();
-      ctx.beginPath();
-      for(j=0;j<n*2;j++){an=j*Math.PI/n;rr=j%2?0.78:1.12;ctx.lineTo(Math.cos(an)*tw*rr,Math.sin(an)*th*rr);}
-      ctx.closePath();ctx.fillStyle=pp.col===C.coral?C.yel:C.cream;ctx.fill();ctx.strokeStyle=INK;ctx.lineWidth=3;ctx.stroke();
-      ctx.fillStyle=pp.col;ctx.fillText(pp.text,0.8,1.8);ctx.fillStyle=pp.col===C.coral?C.coral:INK;ctx.fillText(pp.text,0,1);
-      ctx.restore();
-    }
+    drawPops(0);
     if(s.save>0&&!s.over&&!s.mb){
       ctx.fillStyle=C.yel;ctx.textAlign='center';ctx.textBaseline='alphabetic';ctx.font='700 15px '+FB;ctx.lineWidth=3;ctx.strokeStyle=INK;
       ctx.strokeText('BALL SAVER ON',185,700);ctx.fillText('BALL SAVER ON',185,700);
@@ -2420,6 +2488,7 @@ function makeSim(){
     if(vWant)vid.a=calm?1:vid.a+(1-vid.a)*Math.min(1,dt*12);else{vid.a=calm?0:vid.a*Math.max(0,1-dt*9);if(vid.a<0.03)vid.a=0;}
     if(vid.a>0){if(!vid.vis){vidEl.style.display='block';vid.vis=1;}drawVid(now,dt);}else if(vid.vis){vidEl.style.display='none';vid.vis=0;}
     if(s.wiz){if(!wizT0)wizT0=s.wiz.t;}else wizT0=0;
+    var vt=sim.lairView()&&!s.over?1:0;vu=calm?vt:vt>vu?Math.min(vt,vu+dt/0.45):Math.max(vt,vu-dt/0.45);   // pan between tables in about 0.45 s
     panelTick(dt);draw(now);drawDisp(now);drawHud(now);
     requestAnimationFrame(frame);
   }
