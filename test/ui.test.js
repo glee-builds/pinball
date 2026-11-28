@@ -6,7 +6,7 @@
  *
  * 1. Compile check: every inline <script> body must parse. Nothing is run.
  * 2. Event check: every event name the sim emits (emit('NAME')) must have a
- *    handler in the display script (e.t==='NAME'), and the display must not
+ *    handler in the display script (a key of the ON_EVENT handler table), and the display must not
  *    handle a name the sim never emits. ALLOWED_UNHANDLED is the only
  *    exception, and it is intentionally small.
  */
@@ -45,6 +45,16 @@ function names(source, re) {
   return out;
 }
 
+// Keys of the display script's `var ON_EVENT = { name: function (e) {...}, ... };`
+// handler table, found by text. Each handler starts at the table's own indent level.
+function handlerTableKeys(source) {
+  const start = source.indexOf('var ON_EVENT = {\n');
+  assert.ok(start >= 0, 'the ON_EVENT handler table was not found in the display script');
+  const end = source.indexOf('\n  };\n', start);
+  assert.ok(end > start, 'the end of the ON_EVENT handler table was not found');
+  return names(source.slice(start, end), /^ {4}(\w+): function \(e\) \{$/gm);
+}
+
 test('index.html has exactly two inline script bodies and both compile', () => {
   assert.strictEqual(scripts.length, 2, `expected 2 inline script bodies, found ${scripts.length}`);
   assert.ok(simScript, 'the sim script (id="sim") was not found');
@@ -59,10 +69,10 @@ test('index.html has exactly two inline script bodies and both compile', () => {
 
 test('sim emits and display handles the same event names', () => {
   const emitted = names(simScript.body, /emit\(\s*['"](\w+)['"]/g);
-  const handled = names(displayScript.body, /e\.t\s*===\s*['"](\w+)['"]/g);
+  const handled = handlerTableKeys(displayScript.body);
 
   assert.ok(emitted.size > 0, 'no emit(\'NAME\') calls found in the sim');
-  assert.ok(handled.size > 0, 'no e.t===\'NAME\' handlers found in the display script');
+  assert.ok(handled.size > 0, 'no handlers found in the ON_EVENT table of the display script');
 
   const unhandled = [...emitted].filter((n) => !handled.has(n) && !ALLOWED_UNHANDLED.has(n)).sort();
   const neverEmitted = [...handled].filter((n) => !emitted.has(n)).sort();
