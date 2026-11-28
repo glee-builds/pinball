@@ -6,9 +6,9 @@
  *
  * 1. Compile check: every inline <script> body must parse. Nothing is run.
  * 2. Event check: every event name the sim emits (emit('NAME')) must have a
- *    handler in the display script (e.t==='NAME'), and the display must not
- *    handle a name the sim never emits. ALLOWED_UNHANDLED is the only
- *    exception, and it is intentionally small.
+ *    handler in the display script (a key of the ON_EVENT table), and the
+ *    display must not handle a name the sim never emits. ALLOWED_UNHANDLED is
+ *    the only exception, and it is intentionally small.
  */
 
 const { test } = require('node:test');
@@ -38,6 +38,16 @@ const scripts = inlineScripts(html);
 const simScript = scripts.find((s) => /\bid\s*=\s*["']sim["']/i.test(s.attrs));
 const displayScript = scripts.find((s) => s !== simScript);
 
+// Event names handled by the display: the keys of the ON_EVENT table, each
+// written as `    NAME: function (e) {` at 4 spaces of indent.
+function handlerTableKeys(source) {
+  const start = source.indexOf('var ON_EVENT = {\n');
+  if (start === -1) return new Set();
+  const end = source.indexOf('\n  };\n', start);
+  const table = end === -1 ? source.slice(start) : source.slice(start, end);
+  return names(table, /^ {4}(\w+): function \(e\) \{$/gm);
+}
+
 function names(source, re) {
   const out = new Set();
   let m;
@@ -59,10 +69,10 @@ test('index.html has exactly two inline script bodies and both compile', () => {
 
 test('sim emits and display handles the same event names', () => {
   const emitted = names(simScript.body, /emit\(\s*['"](\w+)['"]/g);
-  const handled = names(displayScript.body, /e\.t\s*===\s*['"](\w+)['"]/g);
+  const handled = handlerTableKeys(displayScript.body);
 
   assert.ok(emitted.size > 0, 'no emit(\'NAME\') calls found in the sim');
-  assert.ok(handled.size > 0, 'no e.t===\'NAME\' handlers found in the display script');
+  assert.ok(handled.size > 0, 'no ON_EVENT handlers found in the display script');
 
   const unhandled = [...emitted].filter((n) => !handled.has(n) && !ALLOWED_UNHANDLED.has(n)).sort();
   const neverEmitted = [...handled].filter((n) => !emitted.has(n)).sort();

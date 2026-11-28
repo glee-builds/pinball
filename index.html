@@ -2930,596 +2930,671 @@ function makeSim() {
   }
 
   /* ---------- events from the table ---------- */
-  function handleEvents() {
-    var ev = sim.events;
-    for (var i = 0; i < ev.length; i++) {
-      var e = ev[i];
-      if (e.t === 'bumper') {
-        flash.bumper[e.v] = 1;
-        pop(WORDS[(Math.random() * WORDS.length) | 0], e.x, e.y - 34);
-        beep(300 + e.v * 70, 0.09, 'square', 0.09, 620 + e.v * 70);
-      } else if (e.t === 'target') {
-        flash.target[e.v] = 1;
-        beep(880, 0.1, 'triangle', 0.1, 1320);
-      } else if (e.t === 'multiball') {
-        lampSweep(C.coral, 1);
-        panel('TEAM-UP MULTIBALL!', 'ALL SCORES DOUBLE', C.coral, C.cream, -1);
-        beep(440, 0.5, 'square', 0.1, 1760);
-      } else if (e.t === 'jackpot') {
-        found.jackpot = 1;
-        tshake(5);
-        lampSweep(C.brass, -1);
-        panel('JACKPOT!', '', C.brass, C.deep, -1);
-        beep(880, 0.5, 'square', 0.1, 2200);
-      } else if (e.t === 'mbend') {
-        beep(500, 0.25, 'triangle', 0.08, 250);
-      } else if (e.t === 'combo') {
-        panel('COMBO x' + e.v, 'KEEP THE CHAIN GOING', C.mint, C.deep, -1);
-        beep(700, 0.2, 'triangle', 0.1, 1400);
-      } else if (e.t === 'sling') {
-        flash.sling = 1;
-        if (e.x !== undefined && e.y !== undefined && Math.random() < 0.5)
-          pop('TWANG!', e.x, e.y - 16, sim.lairView());
-        beep(190, 0.07, 'sawtooth', 0.07, 120);
-      } else if (e.t === 'roll') {
-        beep(990, 0.07, 'sine', 0.1);
-      } else if (e.t === 'bonus') {
-        flash.bonus = 1;
-        beep(660, 0.35, 'triangle', 0.11, 1760);
-      } else if (e.t === 'flip') {
-        beep(130, 0.04, 'square', 0.05, 90);
-      } else if (e.t === 'launch') {
-        sAgain = false;
-        beep(160, 0.25, 'sawtooth', 0.07, 700);
-      } else if (e.t === 'wall') {
-        beep(110, 0.03, 'sine', Math.min(0.06, e.v / 12000));
-      } else if (e.t === 'save') {
-        beep(500, 0.2, 'triangle', 0.09, 750);
-      } else if (e.t === 'drain') {
-        beep(330, 0.4, 'sawtooth', 0.08, 70);
-      } else if (e.t === 'surprise') {
-        if (!NAMES[e.v]) continue;
-        found[e.v] = 1;
-        if (e.v === 'superskill') {
-          game.ss++;
-          flash.jack = 1;
-          tshake(6);
-          lampSweep(C.yel, -1);
-          panel(
-            'SUPER SKILL SHOT! +' + sim.awards.superskill.toLocaleString(),
-            'THE RAMP, BEFORE ANY BUMPER',
-            C.yel,
-            C.deep,
-            -1
-          );
-          tune([
-            [523, 0.07],
-            [659, 0.07],
-            [784, 0.07],
-            [1046, 0.07],
-            [1318, 0.3, 1760]
-          ]);
-          continue;
-        }
-        if (e.v !== 'boss') panel(NAMES[e.v] + '!', 'SURPRISE FOUND', C.cream, C.coral, -1);
-        if (e.v !== 'boss') beep(520, 0.45, 'square', 0.1, e.v === 'lucky' ? 1040 : 1560);
-      } else if (e.t === 'ramp') {
-        flash.crest[e.v] = 1;
-        pop('VWOOSH!', e.v ? 270 : 105, e.v ? 198 : 228, false, C.blu);
-        beep(e.v ? 760 : 640, 0.16, 'triangle', 0.09, e.v ? 1500 : 1300);
-      } else if (e.t === 'rampFail') {
-        beep(260, 0.35, 'triangle', 0.08, 80);
-      } else if (e.t === 'relay') {
-        panel('TEAM RELAY!', 'BOTH RAMPS MADE', C.mint, C.deep, -1);
-        tune([
-          [659, 0.08],
-          [880, 0.08],
-          [1175, 0.22, 1568]
-        ]);
-      } else if (e.t === 'lockLit') {
-        panel('LOCK IS LIT', 'RAMPS OR HIDEOUT', C.brass, C.deep, -1);
-        tune([
-          [587, 0.1],
-          [880, 0.2, 1175]
-        ]);
-      } else if (e.t === 'lock') {
-        panel('BALL ' + e.v + ' LOCKED', '', C.brass, C.deep, -1);
-        tune([
-          [330, 0.08],
-          [440, 0.08],
-          [660, 0.22, 880]
-        ]);
-      } else if (e.t === 'lane') {
-        beep(1150, 0.04, 'sine', 0.05);
-      } else if (e.t === 'kickback') {
-        flash.kick = 1;
-        pop('KICKBACK!', 100, 500);
-        beep(170, 0.28, 'sawtooth', 0.09, 1100);
-      } else if (e.t === 'spin') {
-        beep(1800, 0.012, 'square', 0.018);
-      } else if (e.t === 'drop') {
-        flash.drop[e.v] = 1;
-        beep(520 - e.v * 60, 0.08, 'square', 0.08, 300);
-      } else if (e.t === 'bank') {
-        flash.bank = 1;
-        panel('DROP BANK!', '', C.cream, C.coral, -1);
+  var ON_EVENT = {
+    bumper: function (e) {
+      flash.bumper[e.v] = 1;
+      pop(WORDS[(Math.random() * WORDS.length) | 0], e.x, e.y - 34);
+      beep(300 + e.v * 70, 0.09, 'square', 0.09, 620 + e.v * 70);
+    },
+    target: function (e) {
+      flash.target[e.v] = 1;
+      beep(880, 0.1, 'triangle', 0.1, 1320);
+    },
+    multiball: function (e) {
+      lampSweep(C.coral, 1);
+      panel('TEAM-UP MULTIBALL!', 'ALL SCORES DOUBLE', C.coral, C.cream, -1);
+      beep(440, 0.5, 'square', 0.1, 1760);
+    },
+    jackpot: function (e) {
+      found.jackpot = 1;
+      tshake(5);
+      lampSweep(C.brass, -1);
+      panel('JACKPOT!', '', C.brass, C.deep, -1);
+      beep(880, 0.5, 'square', 0.1, 2200);
+    },
+    mbend: function (e) {
+      beep(500, 0.25, 'triangle', 0.08, 250);
+    },
+    combo: function (e) {
+      panel('COMBO x' + e.v, 'KEEP THE CHAIN GOING', C.mint, C.deep, -1);
+      beep(700, 0.2, 'triangle', 0.1, 1400);
+    },
+    sling: function (e) {
+      flash.sling = 1;
+      if (e.x !== undefined && e.y !== undefined && Math.random() < 0.5)
+        pop('TWANG!', e.x, e.y - 16, sim.lairView());
+      beep(190, 0.07, 'sawtooth', 0.07, 120);
+    },
+    roll: function (e) {
+      beep(990, 0.07, 'sine', 0.1);
+    },
+    bonus: function (e) {
+      flash.bonus = 1;
+      beep(660, 0.35, 'triangle', 0.11, 1760);
+    },
+    flip: function (e) {
+      beep(130, 0.04, 'square', 0.05, 90);
+    },
+    launch: function (e) {
+      sAgain = false;
+      beep(160, 0.25, 'sawtooth', 0.07, 700);
+    },
+    wall: function (e) {
+      beep(110, 0.03, 'sine', Math.min(0.06, e.v / 12000));
+    },
+    save: function (e) {
+      beep(500, 0.2, 'triangle', 0.09, 750);
+    },
+    drain: function (e) {
+      beep(330, 0.4, 'sawtooth', 0.08, 70);
+    },
+    surprise: function (e) {
+      if (!NAMES[e.v]) return;
+      found[e.v] = 1;
+      if (e.v === 'superskill') {
+        game.ss++;
+        flash.jack = 1;
+        tshake(6);
+        lampSweep(C.yel, -1);
+        panel(
+          'SUPER SKILL SHOT! +' + sim.awards.superskill.toLocaleString(),
+          'THE RAMP, BEFORE ANY BUMPER',
+          C.yel,
+          C.deep,
+          -1
+        );
         tune([
           [523, 0.07],
           [659, 0.07],
           [784, 0.07],
-          [1046, 0.25]
+          [1046, 0.07],
+          [1318, 0.3, 1760]
         ]);
-      } else if (e.t === 'hideout') {
-        pop('KA-CHUNK!', 150, 326);
-        beep(300, 0.3, 'sine', 0.1, 110);
-      } else if (e.t === 'hero') {
-        flash.hero[e.v] = 1;
-        panel(HERO[e.v].n, ROLL[e.v], HERO[e.v].c, C.deep, e.v, 'roll', POWER[e.v]);
-        tune([
-          [523, 0.1],
-          [784, 0.18, 1046]
-        ]);
-        if (sim.st.heroes[0] && sim.st.heroes[1] && sim.st.heroes[2])
-          panel('OUR HEROES UNITE!', '', C.yel, C.deep, -1, 'cap');
-      } else if (e.t === 'bossStart') {
-        bossHp = 12;
-        bossShown = 12;
-        bossHalfDone = false;
-        tauntT = 9 + Math.random() * 3;
-        panel('THE BARON STRIKES!', '', C.yel, C.deep, -1, 'cap');
-        panel('SHOWDOWN!', 'BARON GLOOM', BARON, C.cream, -1);
-        say('AT LAST, THE ALLEY GUARD! WELCOME TO MY SHOWDOWN!');
-        beep(110, 0.7, 'sawtooth', 0.1, 70);
-        beep(165, 0.5, 'square', 0.06, 82);
-      } else if (e.t === 'bossHit') {
-        var dm = bossHp - e.v;
-        if (dm < 1) dm = 1;
-        bossHp = e.v;
-        flash.boss = 1;
-        flash.shake = 1;
-        if (e.v > 0 && e.v <= 6 && !bossHalfDone) {
-          bossHalfDone = true;
-          say('ENOUGH! NOW I AM TRULY ANNOYED!');
-        }
-        pop(
-          dm >= 3 ? 'KRAKK! -3' : dm === 2 ? 'BLAMM! -2' : '-1',
-          Math.max(70, Math.min(320, e.x)),
-          e.y + 32
-        );
-        beep(210 + dm * 40, 0.13, 'square', 0.1, 90);
-      } else if (e.t === 'bossWin') {
-        flash.win = 1;
-        tshake(7);
-        lampSweep(C.cream, -1);
-        panel('BARON DOWN!', 'THE HEROES RESET', C.cream, C.deep, -1);
-        say('CURSES! I WILL BE BACK... AFTER A NICE NAP!');
-        tune([
-          [392, 0.12],
-          [523, 0.12],
-          [659, 0.12],
-          [784, 0.5, 1568]
-        ]);
-      } else if (e.t === 'bossEscape') {
-        panel('GLOOM FLEES!', 'TIME RAN OUT', BARON, C.cream, -1);
-        say('HA! TIME IS UP! GLOOM VANISHES INTO THE NIGHT!');
-        beep(420, 0.6, 'triangle', 0.09, 110);
-      } else if (e.t === 'missionReady') {
-        panel(HERO[e.v].n + ' READY!', MD[e.v].name, HERO[e.v].c, C.deep, e.v, 'bal');
-        tune([
-          [523, 0.08],
-          [659, 0.08],
-          [880, 0.16]
-        ]);
-      } else if (e.t === 'missionStart') {
-        panel(MD[e.v].name + '!', MD[e.v].goal, HERO[e.v].c, C.deep, e.v);
-        beep(300, 0.35, 'square', 0.09, 900);
-      } else if (e.t === 'missionStep') {
-        pop('STEP ' + e.v, Math.max(40, Math.min(340, e.x)), e.y + 28);
-        beep(1000 + e.v * 90, 0.05, 'square', 0.07);
-      } else if (e.t === 'missionDone') {
-        game.missions++;
-        lampSweep(HERO[e.v].c, 1);
-        panel('MISSION COMPLETE', MD[e.v].name, HERO[e.v].c, C.deep, e.v);
-        tune([
-          [523, 0.09],
-          [659, 0.09],
-          [784, 0.09],
-          [1046, 0.3, 1318]
-        ]);
-      } else if (e.t === 'missionFail') {
-        panel('MISSION FAILED', 'HIDEOUT TO TRY AGAIN', C.coral, C.cream, e.v);
-        beep(330, 0.5, 'sawtooth', 0.08, 90);
-      } else if (e.t === 'wizardLit') {
-        panel('LAST STAND IS LIT', 'HIDEOUT STARTS IT', WIZC, C.deep, -1);
-        tune([
-          [440, 0.1],
-          [587, 0.1],
-          [880, 0.1],
-          [1175, 0.35, 1760]
-        ]);
-      } else if (e.t === 'wizardStart') {
-        game.wiz++;
-        wizT0 = 0;
-        lampSweep(WIZC, 1);
-        panel('LAST STAND!', 'RAMPS ARE SUPER JACKPOTS', WIZC, C.deep, -1);
-        beep(90, 0.9, 'sawtooth', 0.1, 260);
-        beep(180, 0.7, 'square', 0.06, 520);
-      } else if (e.t === 'superJackpot') {
-        flash.jack = 1;
-        tshake(7);
-        lampSweep(C.brass, -1);
-        panel('SUPER JACKPOT', 'NUMBER ' + e.v, C.brass, C.deep, -1);
-        beep(660, 0.5, 'square', 0.1, 2640);
-        beep(990, 0.35, 'triangle', 0.08, 1980);
-      } else if (e.t === 'wizardEnd') {
-        if (e.v > game.sj) game.sj = e.v;
-        panel('LAST STAND OVER', e.v + (e.v === 1 ? ' SUPER JACKPOT' : ' SUPER JACKPOTS'), WIZC, C.deep, -1);
-        beep(600, 0.7, 'triangle', 0.09, 120);
-      } else if (e.t === 'lairOpen') {
-        panel('LAIR OPEN!', 'EITHER RAMP GOES UP', BARON, C.cream, -1);
-        beep(196, 0.4, 'sawtooth', 0.08, 392);
-        beep(294, 0.5, 'triangle', 0.07, 588);
-      } else if (e.t === 'lairEnter') {
-        flash.lairIn = 1;
-        panel("MEANWHILE, IN GLOOM'S LAIR...", '', C.yel, C.deep, -1, 'cap');
-        tune([
-          [262, 0.14],
-          [196, 0.14],
-          [147, 0.3, 110]
-        ]);
-      } else if (e.t === 'guard') {
-        flash.guard[e.v] = 1;
-        pop('THWACK!', e.x, e.y - 16, true, C.coral);
-        beep(420 + e.v * 90, 0.09, 'square', 0.09, 260 + e.v * 60);
-      } else if (e.t === 'vaultLit') {
-        panel('VAULT LIT!', 'FLIP THE BALL INTO IT', C.yel, C.deep, -1);
-        tune([
-          [440, 0.08],
-          [587, 0.08],
-          [880, 0.08],
-          [1175, 0.25, 1568]
-        ]);
-      } else if (e.t === 'vault') {
-        flash.vault = 1;
-        if (e.v === 1) {
-          tshake(5);
-          lampSweep(C.yel, 1);
-          panel('JACKPOT!', 'THE VAULT BLOWS OPEN', C.yel, C.deep, -1);
-          pop('WHOOM!', e.x, e.y + 34, true, C.coral);
-          tune([
-            [392, 0.1],
-            [523, 0.1],
-            [659, 0.1],
-            [784, 0.1],
-            [1046, 0.35, 1568]
-          ]);
-        } else {
-          pop('KA-CHUNK!', e.x, e.y + 34, true, C.coral);
-          beep(240, 0.3, 'sine', 0.1, 110);
-        }
-      } else if (e.t === 'lairExit') {
-        pop('VWOOSH!', e.x, e.y - 30, true, C.blu);
-        beep(520, 0.35, 'triangle', 0.08, 200);
-      } else if (e.t === 'lairSave') {
-        pop('NOT YET!', e.x, e.y, true, C.coral);
-        panel('LAIR SAVE!', 'ONE MORE TRY UPSTAIRS', BARON, C.cream, -1);
-        beep(330, 0.25, 'square', 0.08, 660);
-      } else if (e.t === 'throne') {
-        flash.vault = Math.max(flash.vault, 0.4);
-        pop('KA-RANG!', e.x, e.y, true, C.coral);
-        panel(
-          'THRONE RAMP!',
-          '+' + (sim.awards.throne * e.v).toLocaleString() + ' LIGHTS A GUARD',
-          C.yel,
-          C.deep,
-          -1
-        );
-        tune([
-          [392, 0.07],
-          [523, 0.07],
-          [784, 0.2, 1046]
-        ]);
-      } else if (e.t === 'throneFail') {
-        beep(260, 0.35, 'triangle', 0.08, 80);
-      } else if (e.t === 'guardLit') {
-        flash.guard[e.v] = 1;
-      } else if (e.t === 'lairLevel') {
-        lampSweep(BARON, -1);
-        panel(
-          'LAIR LEVEL ' + e.v + '!',
-          'NEXT JACKPOT ' + sim.awards.vault[e.v - 1].toLocaleString(),
-          BARON,
-          C.cream,
-          -1
-        );
-      } else if (e.t === 'beacon') {
-        pop('BLEEP!', e.x, e.y + 20, false, C.coral);
-        panel('SIGNAL BEACON!', 'LAIR IS OPEN', C.yel, C.deep, -1);
-        beep(880, 0.12, 'square', 0.08, 1320);
-      } else if (e.t === 'loop') {
-        pop('ZOOM!', e.x - 20, e.y, false, C.blu);
-        panel(
-          'TOP LOOP!',
-          '+' + sim.awards.loop.toLocaleString() + (e.v % 2 === 0 ? '  LAIR IS OPEN' : ''),
-          C.mint,
-          C.deep,
-          -1
-        );
-        tune([
-          [523, 0.06],
-          [784, 0.06],
-          [1046, 0.18]
-        ]);
-      } else if (e.t === 'shieldUp') {
-        shV = Math.max(shV, 0.02);
-        flash.shUp = 1;
-        panel('SHIELD UP!', 'BREAK IT IN 3 HITS', BARON, C.cream, -1);
-        beep(140, 0.6, 'sawtooth', 0.09, 420);
-        beep(280, 0.5, 'square', 0.05, 840);
-      } else if (e.t === 'shieldHit') {
-        flash.shHit = 1;
-        pop('BLAMM!', e.x, e.y - 22, false, C.coral);
-        beep(160, 0.16, 'sawtooth', 0.11, 60);
-        beep(900, 0.08, 'square', 0.06, 300);
-      } else if (e.t === 'shieldDown') {
-        shV = 0;
-        flash.shat = 1;
-        shShards = [];
-        for (var q = 0; q < 12; q++)
-          shShards.push({
-            x: sim.shield.x0 + ((sim.shield.x1 - sim.shield.x0) * q) / 11,
-            y: sim.shield.y0 + ((sim.shield.y1 - sim.shield.y0) * q) / 11 - 8,
-            vx: (Math.random() - 0.5) * 130,
-            vy: -50 - Math.random() * 110,
-            r: Math.random() * 6,
-            w: (Math.random() - 0.5) * 14,
-            s: 5 + Math.random() * 7
-          });
+        return;
+      }
+      if (e.v !== 'boss') panel(NAMES[e.v] + '!', 'SURPRISE FOUND', C.cream, C.coral, -1);
+      if (e.v !== 'boss') beep(520, 0.45, 'square', 0.1, e.v === 'lucky' ? 1040 : 1560);
+    },
+    ramp: function (e) {
+      flash.crest[e.v] = 1;
+      pop('VWOOSH!', e.v ? 270 : 105, e.v ? 198 : 228, false, C.blu);
+      beep(e.v ? 760 : 640, 0.16, 'triangle', 0.09, e.v ? 1500 : 1300);
+    },
+    rampFail: function (e) {
+      beep(260, 0.35, 'triangle', 0.08, 80);
+    },
+    relay: function (e) {
+      panel('TEAM RELAY!', 'BOTH RAMPS MADE', C.mint, C.deep, -1);
+      tune([
+        [659, 0.08],
+        [880, 0.08],
+        [1175, 0.22, 1568]
+      ]);
+    },
+    lockLit: function (e) {
+      panel('LOCK IS LIT', 'RAMPS OR HIDEOUT', C.brass, C.deep, -1);
+      tune([
+        [587, 0.1],
+        [880, 0.2, 1175]
+      ]);
+    },
+    lock: function (e) {
+      panel('BALL ' + e.v + ' LOCKED', '', C.brass, C.deep, -1);
+      tune([
+        [330, 0.08],
+        [440, 0.08],
+        [660, 0.22, 880]
+      ]);
+    },
+    lane: function (e) {
+      beep(1150, 0.04, 'sine', 0.05);
+    },
+    kickback: function (e) {
+      flash.kick = 1;
+      pop('KICKBACK!', 100, 500);
+      beep(170, 0.28, 'sawtooth', 0.09, 1100);
+    },
+    spin: function (e) {
+      beep(1800, 0.012, 'square', 0.018);
+    },
+    drop: function (e) {
+      flash.drop[e.v] = 1;
+      beep(520 - e.v * 60, 0.08, 'square', 0.08, 300);
+    },
+    bank: function (e) {
+      flash.bank = 1;
+      panel('DROP BANK!', '', C.cream, C.coral, -1);
+      tune([
+        [523, 0.07],
+        [659, 0.07],
+        [784, 0.07],
+        [1046, 0.25]
+      ]);
+    },
+    hideout: function (e) {
+      pop('KA-CHUNK!', 150, 326);
+      beep(300, 0.3, 'sine', 0.1, 110);
+    },
+    hero: function (e) {
+      flash.hero[e.v] = 1;
+      panel(HERO[e.v].n, ROLL[e.v], HERO[e.v].c, C.deep, e.v, 'roll', POWER[e.v]);
+      tune([
+        [523, 0.1],
+        [784, 0.18, 1046]
+      ]);
+      if (sim.st.heroes[0] && sim.st.heroes[1] && sim.st.heroes[2])
+        panel('OUR HEROES UNITE!', '', C.yel, C.deep, -1, 'cap');
+    },
+    bossStart: function (e) {
+      bossHp = 12;
+      bossShown = 12;
+      bossHalfDone = false;
+      tauntT = 9 + Math.random() * 3;
+      panel('THE BARON STRIKES!', '', C.yel, C.deep, -1, 'cap');
+      panel('SHOWDOWN!', 'BARON GLOOM', BARON, C.cream, -1);
+      say('AT LAST, THE ALLEY GUARD! WELCOME TO MY SHOWDOWN!');
+      beep(110, 0.7, 'sawtooth', 0.1, 70);
+      beep(165, 0.5, 'square', 0.06, 82);
+    },
+    bossHit: function (e) {
+      var dm = bossHp - e.v;
+      if (dm < 1) dm = 1;
+      bossHp = e.v;
+      flash.boss = 1;
+      flash.shake = 1;
+      if (e.v > 0 && e.v <= 6 && !bossHalfDone) {
+        bossHalfDone = true;
+        say('ENOUGH! NOW I AM TRULY ANNOYED!');
+      }
+      pop(
+        dm >= 3 ? 'KRAKK! -3' : dm === 2 ? 'BLAMM! -2' : '-1',
+        Math.max(70, Math.min(320, e.x)),
+        e.y + 32
+      );
+      beep(210 + dm * 40, 0.13, 'square', 0.1, 90);
+    },
+    bossWin: function (e) {
+      flash.win = 1;
+      tshake(7);
+      lampSweep(C.cream, -1);
+      panel('BARON DOWN!', 'THE HEROES RESET', C.cream, C.deep, -1);
+      say('CURSES! I WILL BE BACK... AFTER A NICE NAP!');
+      tune([
+        [392, 0.12],
+        [523, 0.12],
+        [659, 0.12],
+        [784, 0.5, 1568]
+      ]);
+    },
+    bossEscape: function (e) {
+      panel('GLOOM FLEES!', 'TIME RAN OUT', BARON, C.cream, -1);
+      say('HA! TIME IS UP! GLOOM VANISHES INTO THE NIGHT!');
+      beep(420, 0.6, 'triangle', 0.09, 110);
+    },
+    missionReady: function (e) {
+      panel(HERO[e.v].n + ' READY!', MD[e.v].name, HERO[e.v].c, C.deep, e.v, 'bal');
+      tune([
+        [523, 0.08],
+        [659, 0.08],
+        [880, 0.16]
+      ]);
+    },
+    missionStart: function (e) {
+      panel(MD[e.v].name + '!', MD[e.v].goal, HERO[e.v].c, C.deep, e.v);
+      beep(300, 0.35, 'square', 0.09, 900);
+    },
+    missionStep: function (e) {
+      pop('STEP ' + e.v, Math.max(40, Math.min(340, e.x)), e.y + 28);
+      beep(1000 + e.v * 90, 0.05, 'square', 0.07);
+    },
+    missionDone: function (e) {
+      game.missions++;
+      lampSweep(HERO[e.v].c, 1);
+      panel('MISSION COMPLETE', MD[e.v].name, HERO[e.v].c, C.deep, e.v);
+      tune([
+        [523, 0.09],
+        [659, 0.09],
+        [784, 0.09],
+        [1046, 0.3, 1318]
+      ]);
+    },
+    missionFail: function (e) {
+      panel('MISSION FAILED', 'HIDEOUT TO TRY AGAIN', C.coral, C.cream, e.v);
+      beep(330, 0.5, 'sawtooth', 0.08, 90);
+    },
+    wizardLit: function (e) {
+      panel('LAST STAND IS LIT', 'HIDEOUT STARTS IT', WIZC, C.deep, -1);
+      tune([
+        [440, 0.1],
+        [587, 0.1],
+        [880, 0.1],
+        [1175, 0.35, 1760]
+      ]);
+    },
+    wizardStart: function (e) {
+      game.wiz++;
+      wizT0 = 0;
+      lampSweep(WIZC, 1);
+      panel('LAST STAND!', 'RAMPS ARE SUPER JACKPOTS', WIZC, C.deep, -1);
+      beep(90, 0.9, 'sawtooth', 0.1, 260);
+      beep(180, 0.7, 'square', 0.06, 520);
+    },
+    superJackpot: function (e) {
+      flash.jack = 1;
+      tshake(7);
+      lampSweep(C.brass, -1);
+      panel('SUPER JACKPOT', 'NUMBER ' + e.v, C.brass, C.deep, -1);
+      beep(660, 0.5, 'square', 0.1, 2640);
+      beep(990, 0.35, 'triangle', 0.08, 1980);
+    },
+    wizardEnd: function (e) {
+      if (e.v > game.sj) game.sj = e.v;
+      panel('LAST STAND OVER', e.v + (e.v === 1 ? ' SUPER JACKPOT' : ' SUPER JACKPOTS'), WIZC, C.deep, -1);
+      beep(600, 0.7, 'triangle', 0.09, 120);
+    },
+    lairOpen: function (e) {
+      panel('LAIR OPEN!', 'EITHER RAMP GOES UP', BARON, C.cream, -1);
+      beep(196, 0.4, 'sawtooth', 0.08, 392);
+      beep(294, 0.5, 'triangle', 0.07, 588);
+    },
+    lairEnter: function (e) {
+      flash.lairIn = 1;
+      panel("MEANWHILE, IN GLOOM'S LAIR...", '', C.yel, C.deep, -1, 'cap');
+      tune([
+        [262, 0.14],
+        [196, 0.14],
+        [147, 0.3, 110]
+      ]);
+    },
+    guard: function (e) {
+      flash.guard[e.v] = 1;
+      pop('THWACK!', e.x, e.y - 16, true, C.coral);
+      beep(420 + e.v * 90, 0.09, 'square', 0.09, 260 + e.v * 60);
+    },
+    vaultLit: function (e) {
+      panel('VAULT LIT!', 'FLIP THE BALL INTO IT', C.yel, C.deep, -1);
+      tune([
+        [440, 0.08],
+        [587, 0.08],
+        [880, 0.08],
+        [1175, 0.25, 1568]
+      ]);
+    },
+    vault: function (e) {
+      flash.vault = 1;
+      if (e.v === 1) {
         tshake(5);
-        say('MY SHIELD! DO YOU KNOW WHAT THAT COST?');
-        panel('SHIELD SMASHED!', '', C.yel, C.deep, -1);
-        beep(90, 0.5, 'sawtooth', 0.12, 40);
-        beep(1200, 0.3, 'square', 0.07, 200);
-      } else if (e.t === 'magnet') {
-        flash.mag = 1;
-        pop('SHLOOSH!', sim.magnet.x, sim.magnet.y - 26, false, C.blu);
-        panel('UNDERTOW!', 'TIDE CATCHES THE BALL', C.blu, C.cream, 2, 'bal');
-        beep(300, 0.5, 'sine', 0.1, 900);
-        beep(450, 0.5, 'triangle', 0.06, 1400);
-      } else if (e.t === 'mysteryUp') {
-        beep(1200, 0.12, 'sine', 0.08, 1800);
-      } else if (e.t === 'extraLit') {
-        panel('EXTRA BALL LIT!', 'HIDEOUT COLLECTS IT', C.coral, C.cream, -1);
-        tune([
-          [659, 0.08],
-          [880, 0.08],
-          [1175, 0.2, 1568]
-        ]);
-      } else if (e.t === 'extraBall') {
-        panel('EXTRA BALL!', '', C.yel, C.coral, -1);
-        tune([
-          [523, 0.08],
-          [659, 0.08],
-          [784, 0.08],
-          [1046, 0.08],
-          [1568, 0.3, 2093]
-        ]);
-      } else if (e.t === 'shootAgain') {
-        sAgain = true;
-        panel('SHOOT AGAIN!', 'SAME BALL, NEW LAUNCH', C.coral, C.cream, -1);
+        lampSweep(C.yel, 1);
+        panel('JACKPOT!', 'THE VAULT BLOWS OPEN', C.yel, C.deep, -1);
+        pop('WHOOM!', e.x, e.y + 34, true, C.coral);
         tune([
           [392, 0.1],
           [523, 0.1],
-          [784, 0.25, 1046]
-        ]);
-      } else if (e.t === 'match') {
-        startMatch(e.v);
-      } else if (e.t === 'videoLit') {
-        panel('ROOFTOP CHASE LIT!', 'HIDEOUT STARTS IT', C.mint, C.deep, -1);
-        tune([
-          [440, 0.08],
-          [659, 0.08],
-          [880, 0.2, 1175]
-        ]);
-      } else if (e.t === 'videoStart') {
-        var vs = sim.st.video;
-        vid.end = 0;
-        vid.hx = vid.lx = vs ? vs.x : 1;
-        vid.hit = 0;
-        vid.wt = 0;
-        vid.pops.length = 0;
-        vid.ob.length = 0;
-        vid.dod = 0;
-        vid.hits = 0;
-        vid.t = sim.videoDef.t;
-        vid.sc = 0;
-        vid.lf = vid.rf = 0;
-        panel('ROOFTOP CHASE!', '', C.yel, C.deep, -1, 'cap');
-        tune([
-          [392, 0.08],
-          [523, 0.08],
-          [659, 0.08],
-          [784, 0.2, 1046]
-        ]);
-      } else if (e.t === 'videoMove') {
-        if (e.v < vid.lx) vid.lf = 1;
-        else if (e.v > vid.lx) vid.rf = 1;
-        vid.lx = e.v;
-        beep(900, 0.025, 'square', 0.045);
-      } else if (e.t === 'videoDodge') {
-        vid.pops.push({ x: sim.st.video ? sim.st.video.x : 1, t: 0.6 });
-        if (vid.pops.length > 4) vid.pops.shift();
-        beep(520, 0.07, 'triangle', 0.08, 980);
-      } else if (e.t === 'videoHit') {
-        vid.hit = 1;
-        vid.word = ['BLAMM!', 'KRAKK!', 'WHOOM!'][(Math.random() * 3) | 0];
-        vid.wt = 0.7;
-        tshake(5);
-        beep(150, 0.22, 'sawtooth', 0.12, 55);
-        beep(800, 0.07, 'square', 0.06, 220);
-      } else if (e.t === 'videoEnd') {
-        vid.end = 1.6;
-        vid.dod = e.v;
-        if (e.v > game.vd) game.vd = e.v;
-        panel(
-          e.v +
-            (e.v === 1 ? ' DODGE! +' : ' DODGES! +') +
-            (
-              e.v * sim.awards.videoDodge +
-              (sim.st.videoPerfect ? sim.awards.videoPerfect : 0)
-            ).toLocaleString(),
-          sim.st.videoPerfect
-            ? 'NO HITS! +' + sim.awards.videoPerfect.toLocaleString() + ' INCLUDED'
-            : 'ROOFTOP CHASE BONUS',
-          C.yel,
-          C.deep,
-          -1
-        );
-        tune([
-          [523, 0.1],
           [659, 0.1],
           [784, 0.1],
-          [1046, 0.3, 1318]
+          [1046, 0.35, 1568]
         ]);
-      } else if (e.t === 'chain') {
-        if (e.v > game.ch) game.ch = e.v;
-        chainN = e.v;
-        chainT0 = performance.now();
-        chainPulse = 1;
-        beep(600 + Math.min(e.v, 8) * 60, 0.08, 'triangle', 0.07, 900 + Math.min(e.v, 8) * 80);
-      } else if (e.t === 'combo2') {
-        var cn = COMBO2[e.v];
-        if (cn) {
-          panel(cn[0] + ' ' + cn[1], cn[1] + ' POINTS', cn[2], cn[3], -1);
-          pop(
-            e.v === 'rally' ? 'VWOOSH!' : e.v === 'hustle' ? 'WHOOM!' : 'ZAPP!',
-            Math.max(60, Math.min(340, e.x)),
-            e.y + 30,
-            false,
-            C.blu
-          );
-          tune([
-            [587, 0.07],
-            [784, 0.07],
-            [988, 0.07],
-            [1318, 0.25, 1760]
-          ]);
-        }
-      } else if (e.t === 'over') {
-        beep(260, 0.7, 'sawtooth', 0.09, 50);
-        pq.length = 0;
-        pcur = null;
-        cardStart = false;
-        sAgain = false;
-        vid.end = 0;
-        chainN = 0;
-        var g = sim.st,
-          nw = {},
-          dd = new Date(),
-          prev = bestScore(),
-          key;
-        if (g.score > 0) {
-          var entry = {
-            s: g.score,
-            d: dd.getMonth() + 1 + '/' + dd.getDate() + '/' + String(dd.getFullYear()).slice(2)
-          };
-          rec.top.push(entry);
-          rec.top.sort(function (a, b) {
-            return b.s - a.s;
-          });
-          rec.top = rec.top.slice(0, 5);
-          nw.rank = rec.top.indexOf(entry);
-        }
-        if (game.ch > (Number(rec.ch) || 0)) {
-          rec.ch = game.ch;
-          nw.ch = 1;
-        }
-        if (g.namedCombos > (Number(rec.nc) || 0)) {
-          rec.nc = g.namedCombos;
-          nw.nc = 1;
-        }
-        if (g.matchWin) {
-          rec.mw = (Number(rec.mw) || 0) + 1;
-          nw.mw = 1;
-        }
-        if (game.vd > (Number(rec.vd) || 0)) {
-          rec.vd = game.vd;
-          nw.vd = 1;
-        }
-        if (game.ss > 0) {
-          rec.ss = (Number(rec.ss) || 0) + game.ss;
-          nw.ss = 1;
-        }
-        if (g.maxCombo > rec.combo) {
-          rec.combo = g.maxCombo;
-          nw.combo = 1;
-        }
-        if (g.maxMult > rec.mult) {
-          rec.mult = g.maxMult;
-          nw.mult = 1;
-        }
-        if (g.mbCount > rec.mbs) {
-          rec.mbs = g.mbCount;
-          nw.mbs = 1;
-        }
-        if (g.bossWins > (Number(rec.bw) || 0)) {
-          rec.bw = g.bossWins;
-          nw.bw = 1;
-        }
-        if (g.play > rec.longest) {
-          rec.longest = Math.round(g.play);
-          nw.longest = 1;
-        }
-        if (game.missions > (Number(rec.mc) || 0)) {
-          rec.mc = game.missions;
-          nw.mc = 1;
-        }
-        if (game.wiz > 0) {
-          rec.ls = (Number(rec.ls) || 0) + game.wiz;
-          nw.ls = 1;
-        }
-        if (game.sj > (Number(rec.sj) || 0)) {
-          rec.sj = game.sj;
-          nw.sj = 1;
-        }
-        rec.games++;
-        rec.bumps += g.bumps;
-        for (key in found)
-          if (!rec.found[key]) {
-            rec.found[key] = 1;
-            nw.found = 1;
-          }
-        saveRec();
-        el('best').textContent = bestScore().toLocaleString();
-        el('cardTitle').textContent = g.score > prev && g.score > 0 ? 'New personal best' : 'Game over';
-        el('card').classList.remove('cv');
-        el('final').hidden = false;
-        el('final').textContent = g.score.toLocaleString() + ' points';
-        el('mScore').textContent = (Math.floor(g.score / 10) % 10) + '0';
-        el('mSpin').textContent = '--';
-        el('mSpin').className = 'reel';
-        el('mScore').className = 'reel';
-        el('mWin').hidden = true;
-        el('match').hidden = false;
-        el('cardText').hidden = true;
-        el('cardMore').hidden = true;
-        el('sum').textContent =
-          'Missions ' +
-          game.missions +
-          ' | Showdowns ' +
-          g.bossWins +
-          ' | Last Stand ' +
-          (game.wiz ? 'yes' : 'no');
-        el('sum').hidden = false;
-        renderRecs(nw);
-        el('go').textContent = 'Play again';
-        el('card').hidden = false;
-        el('card').scrollTop = 0;
-        ptrs = {};
-        charge = null;
-        refreshFlippers();
+      } else {
+        pop('KA-CHUNK!', e.x, e.y + 34, true, C.coral);
+        beep(240, 0.3, 'sine', 0.1, 110);
       }
+    },
+    lairExit: function (e) {
+      pop('VWOOSH!', e.x, e.y - 30, true, C.blu);
+      beep(520, 0.35, 'triangle', 0.08, 200);
+    },
+    lairSave: function (e) {
+      pop('NOT YET!', e.x, e.y, true, C.coral);
+      panel('LAIR SAVE!', 'ONE MORE TRY UPSTAIRS', BARON, C.cream, -1);
+      beep(330, 0.25, 'square', 0.08, 660);
+    },
+    throne: function (e) {
+      flash.vault = Math.max(flash.vault, 0.4);
+      pop('KA-RANG!', e.x, e.y, true, C.coral);
+      panel(
+        'THRONE RAMP!',
+        '+' + (sim.awards.throne * e.v).toLocaleString() + ' LIGHTS A GUARD',
+        C.yel,
+        C.deep,
+        -1
+      );
+      tune([
+        [392, 0.07],
+        [523, 0.07],
+        [784, 0.2, 1046]
+      ]);
+    },
+    throneFail: function (e) {
+      beep(260, 0.35, 'triangle', 0.08, 80);
+    },
+    guardLit: function (e) {
+      flash.guard[e.v] = 1;
+    },
+    lairLevel: function (e) {
+      lampSweep(BARON, -1);
+      panel(
+        'LAIR LEVEL ' + e.v + '!',
+        'NEXT JACKPOT ' + sim.awards.vault[e.v - 1].toLocaleString(),
+        BARON,
+        C.cream,
+        -1
+      );
+    },
+    beacon: function (e) {
+      pop('BLEEP!', e.x, e.y + 20, false, C.coral);
+      panel('SIGNAL BEACON!', 'LAIR IS OPEN', C.yel, C.deep, -1);
+      beep(880, 0.12, 'square', 0.08, 1320);
+    },
+    loop: function (e) {
+      pop('ZOOM!', e.x - 20, e.y, false, C.blu);
+      panel(
+        'TOP LOOP!',
+        '+' + sim.awards.loop.toLocaleString() + (e.v % 2 === 0 ? '  LAIR IS OPEN' : ''),
+        C.mint,
+        C.deep,
+        -1
+      );
+      tune([
+        [523, 0.06],
+        [784, 0.06],
+        [1046, 0.18]
+      ]);
+    },
+    shieldUp: function (e) {
+      shV = Math.max(shV, 0.02);
+      flash.shUp = 1;
+      panel('SHIELD UP!', 'BREAK IT IN 3 HITS', BARON, C.cream, -1);
+      beep(140, 0.6, 'sawtooth', 0.09, 420);
+      beep(280, 0.5, 'square', 0.05, 840);
+    },
+    shieldHit: function (e) {
+      flash.shHit = 1;
+      pop('BLAMM!', e.x, e.y - 22, false, C.coral);
+      beep(160, 0.16, 'sawtooth', 0.11, 60);
+      beep(900, 0.08, 'square', 0.06, 300);
+    },
+    shieldDown: function (e) {
+      shV = 0;
+      flash.shat = 1;
+      shShards = [];
+      for (var q = 0; q < 12; q++)
+        shShards.push({
+          x: sim.shield.x0 + ((sim.shield.x1 - sim.shield.x0) * q) / 11,
+          y: sim.shield.y0 + ((sim.shield.y1 - sim.shield.y0) * q) / 11 - 8,
+          vx: (Math.random() - 0.5) * 130,
+          vy: -50 - Math.random() * 110,
+          r: Math.random() * 6,
+          w: (Math.random() - 0.5) * 14,
+          s: 5 + Math.random() * 7
+        });
+      tshake(5);
+      say('MY SHIELD! DO YOU KNOW WHAT THAT COST?');
+      panel('SHIELD SMASHED!', '', C.yel, C.deep, -1);
+      beep(90, 0.5, 'sawtooth', 0.12, 40);
+      beep(1200, 0.3, 'square', 0.07, 200);
+    },
+    magnet: function (e) {
+      flash.mag = 1;
+      pop('SHLOOSH!', sim.magnet.x, sim.magnet.y - 26, false, C.blu);
+      panel('UNDERTOW!', 'TIDE CATCHES THE BALL', C.blu, C.cream, 2, 'bal');
+      beep(300, 0.5, 'sine', 0.1, 900);
+      beep(450, 0.5, 'triangle', 0.06, 1400);
+    },
+    mysteryUp: function (e) {
+      beep(1200, 0.12, 'sine', 0.08, 1800);
+    },
+    extraLit: function (e) {
+      panel('EXTRA BALL LIT!', 'HIDEOUT COLLECTS IT', C.coral, C.cream, -1);
+      tune([
+        [659, 0.08],
+        [880, 0.08],
+        [1175, 0.2, 1568]
+      ]);
+    },
+    extraBall: function (e) {
+      panel('EXTRA BALL!', '', C.yel, C.coral, -1);
+      tune([
+        [523, 0.08],
+        [659, 0.08],
+        [784, 0.08],
+        [1046, 0.08],
+        [1568, 0.3, 2093]
+      ]);
+    },
+    shootAgain: function (e) {
+      sAgain = true;
+      panel('SHOOT AGAIN!', 'SAME BALL, NEW LAUNCH', C.coral, C.cream, -1);
+      tune([
+        [392, 0.1],
+        [523, 0.1],
+        [784, 0.25, 1046]
+      ]);
+    },
+    match: function (e) {
+      startMatch(e.v);
+    },
+    videoLit: function (e) {
+      panel('ROOFTOP CHASE LIT!', 'HIDEOUT STARTS IT', C.mint, C.deep, -1);
+      tune([
+        [440, 0.08],
+        [659, 0.08],
+        [880, 0.2, 1175]
+      ]);
+    },
+    videoStart: function (e) {
+      var vs = sim.st.video;
+      vid.end = 0;
+      vid.hx = vid.lx = vs ? vs.x : 1;
+      vid.hit = 0;
+      vid.wt = 0;
+      vid.pops.length = 0;
+      vid.ob.length = 0;
+      vid.dod = 0;
+      vid.hits = 0;
+      vid.t = sim.videoDef.t;
+      vid.sc = 0;
+      vid.lf = vid.rf = 0;
+      panel('ROOFTOP CHASE!', '', C.yel, C.deep, -1, 'cap');
+      tune([
+        [392, 0.08],
+        [523, 0.08],
+        [659, 0.08],
+        [784, 0.2, 1046]
+      ]);
+    },
+    videoMove: function (e) {
+      if (e.v < vid.lx) vid.lf = 1;
+      else if (e.v > vid.lx) vid.rf = 1;
+      vid.lx = e.v;
+      beep(900, 0.025, 'square', 0.045);
+    },
+    videoDodge: function (e) {
+      vid.pops.push({ x: sim.st.video ? sim.st.video.x : 1, t: 0.6 });
+      if (vid.pops.length > 4) vid.pops.shift();
+      beep(520, 0.07, 'triangle', 0.08, 980);
+    },
+    videoHit: function (e) {
+      vid.hit = 1;
+      vid.word = ['BLAMM!', 'KRAKK!', 'WHOOM!'][(Math.random() * 3) | 0];
+      vid.wt = 0.7;
+      tshake(5);
+      beep(150, 0.22, 'sawtooth', 0.12, 55);
+      beep(800, 0.07, 'square', 0.06, 220);
+    },
+    videoEnd: function (e) {
+      vid.end = 1.6;
+      vid.dod = e.v;
+      if (e.v > game.vd) game.vd = e.v;
+      panel(
+        e.v +
+          (e.v === 1 ? ' DODGE! +' : ' DODGES! +') +
+          (
+            e.v * sim.awards.videoDodge +
+            (sim.st.videoPerfect ? sim.awards.videoPerfect : 0)
+          ).toLocaleString(),
+        sim.st.videoPerfect
+          ? 'NO HITS! +' + sim.awards.videoPerfect.toLocaleString() + ' INCLUDED'
+          : 'ROOFTOP CHASE BONUS',
+        C.yel,
+        C.deep,
+        -1
+      );
+      tune([
+        [523, 0.1],
+        [659, 0.1],
+        [784, 0.1],
+        [1046, 0.3, 1318]
+      ]);
+    },
+    chain: function (e) {
+      if (e.v > game.ch) game.ch = e.v;
+      chainN = e.v;
+      chainT0 = performance.now();
+      chainPulse = 1;
+      beep(600 + Math.min(e.v, 8) * 60, 0.08, 'triangle', 0.07, 900 + Math.min(e.v, 8) * 80);
+    },
+    combo2: function (e) {
+      var cn = COMBO2[e.v];
+      if (cn) {
+        panel(cn[0] + ' ' + cn[1], cn[1] + ' POINTS', cn[2], cn[3], -1);
+        pop(
+          e.v === 'rally' ? 'VWOOSH!' : e.v === 'hustle' ? 'WHOOM!' : 'ZAPP!',
+          Math.max(60, Math.min(340, e.x)),
+          e.y + 30,
+          false,
+          C.blu
+        );
+        tune([
+          [587, 0.07],
+          [784, 0.07],
+          [988, 0.07],
+          [1318, 0.25, 1760]
+        ]);
+      }
+    },
+    over: function (e) {
+      beep(260, 0.7, 'sawtooth', 0.09, 50);
+      pq.length = 0;
+      pcur = null;
+      cardStart = false;
+      sAgain = false;
+      vid.end = 0;
+      chainN = 0;
+      var g = sim.st,
+        nw = {},
+        dd = new Date(),
+        prev = bestScore(),
+        key;
+      if (g.score > 0) {
+        var entry = {
+          s: g.score,
+          d: dd.getMonth() + 1 + '/' + dd.getDate() + '/' + String(dd.getFullYear()).slice(2)
+        };
+        rec.top.push(entry);
+        rec.top.sort(function (a, b) {
+          return b.s - a.s;
+        });
+        rec.top = rec.top.slice(0, 5);
+        nw.rank = rec.top.indexOf(entry);
+      }
+      if (game.ch > (Number(rec.ch) || 0)) {
+        rec.ch = game.ch;
+        nw.ch = 1;
+      }
+      if (g.namedCombos > (Number(rec.nc) || 0)) {
+        rec.nc = g.namedCombos;
+        nw.nc = 1;
+      }
+      if (g.matchWin) {
+        rec.mw = (Number(rec.mw) || 0) + 1;
+        nw.mw = 1;
+      }
+      if (game.vd > (Number(rec.vd) || 0)) {
+        rec.vd = game.vd;
+        nw.vd = 1;
+      }
+      if (game.ss > 0) {
+        rec.ss = (Number(rec.ss) || 0) + game.ss;
+        nw.ss = 1;
+      }
+      if (g.maxCombo > rec.combo) {
+        rec.combo = g.maxCombo;
+        nw.combo = 1;
+      }
+      if (g.maxMult > rec.mult) {
+        rec.mult = g.maxMult;
+        nw.mult = 1;
+      }
+      if (g.mbCount > rec.mbs) {
+        rec.mbs = g.mbCount;
+        nw.mbs = 1;
+      }
+      if (g.bossWins > (Number(rec.bw) || 0)) {
+        rec.bw = g.bossWins;
+        nw.bw = 1;
+      }
+      if (g.play > rec.longest) {
+        rec.longest = Math.round(g.play);
+        nw.longest = 1;
+      }
+      if (game.missions > (Number(rec.mc) || 0)) {
+        rec.mc = game.missions;
+        nw.mc = 1;
+      }
+      if (game.wiz > 0) {
+        rec.ls = (Number(rec.ls) || 0) + game.wiz;
+        nw.ls = 1;
+      }
+      if (game.sj > (Number(rec.sj) || 0)) {
+        rec.sj = game.sj;
+        nw.sj = 1;
+      }
+      rec.games++;
+      rec.bumps += g.bumps;
+      for (key in found)
+        if (!rec.found[key]) {
+          rec.found[key] = 1;
+          nw.found = 1;
+        }
+      saveRec();
+      el('best').textContent = bestScore().toLocaleString();
+      el('cardTitle').textContent = g.score > prev && g.score > 0 ? 'New personal best' : 'Game over';
+      el('card').classList.remove('cv');
+      el('final').hidden = false;
+      el('final').textContent = g.score.toLocaleString() + ' points';
+      el('mScore').textContent = (Math.floor(g.score / 10) % 10) + '0';
+      el('mSpin').textContent = '--';
+      el('mSpin').className = 'reel';
+      el('mScore').className = 'reel';
+      el('mWin').hidden = true;
+      el('match').hidden = false;
+      el('cardText').hidden = true;
+      el('cardMore').hidden = true;
+      el('sum').textContent =
+        'Missions ' +
+        game.missions +
+        ' | Showdowns ' +
+        g.bossWins +
+        ' | Last Stand ' +
+        (game.wiz ? 'yes' : 'no');
+      el('sum').hidden = false;
+      renderRecs(nw);
+      el('go').textContent = 'Play again';
+      el('card').hidden = false;
+      el('card').scrollTop = 0;
+      ptrs = {};
+      charge = null;
+      refreshFlippers();
     }
+  };
+  function handleEvents() {
+    var ev = sim.events;
+    for (var i = 0; i < ev.length; i++) {
+      var e = ev[i];
+      var h = Object.prototype.hasOwnProperty.call(ON_EVENT, e.t) ? ON_EVENT[e.t] : null;
+      if (h) h(e);
+    }
+
     ev.length = 0;
   }
 
