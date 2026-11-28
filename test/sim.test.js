@@ -84,7 +84,7 @@ var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, l
   missionReady: 0, missionStart: 0, missionDone: 0, missionFail: 0, wizardLit: 0, wizardStart: 0, superJackpot: 0, wizardEnd: 0,
   lairOpen: 0, lairEnter: 0, guard: 0, vaultLit: 0, vault0: 0, vault1: 0, lairExit: 0,
   shieldUp: 0, shieldHit: 0, shieldDown: 0, magnet: 0, extraLit: 0, extraBall: 0, shootAgain: 0, match: 0, matchWin: 0, videoLit: 0, videoStart: 0, videoHit: 0, videoDodge: 0, videoEnd: 0, chain: 0,
-  doubleRun: 0, emberRush: 0, skyway: 0, superskill: 0 };
+  encore: 0, hustle: 0, rally: 0, superskill: 0 };
 var VIDEO_MAX = 22;          // a video mode longer than this many simulated seconds fails
 
 function playGame(seed) {
@@ -218,5 +218,5 @@ console.log('Round 6 events over ' + GAMES + ' games: shieldUp ' + EV.shieldUp +
   ', magnet ' + EV.magnet + ', extraLit ' + EV.extraLit + ', extraBall ' + EV.extraBall + ', shootAgain ' + EV.shootAgain +
   ', match ' + EV.match + ', matchWin ' + EV.matchWin + ', videoLit ' + EV.videoLit + ', videoStart ' + EV.videoStart +
   ', videoHit ' + EV.videoHit + ', videoDodge ' + EV.videoDodge + ', videoEnd ' + EV.videoEnd + ', chain ' + EV.chain +
-  ', doubleRun ' + EV.doubleRun + ', emberRush ' + EV.emberRush + ', skyway ' + EV.skyway + ', superskill ' + EV.superskill + '.');
+  ', encore ' + EV.encore + ', hustle ' + EV.hustle + ', rally ' + EV.rally + ', superskill ' + EV.superskill + '.');
 process.exit(failures ? 1 : 0);
