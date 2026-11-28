@@ -15,6 +15,10 @@
  *   - a ball leaves the table above y = 640 (through a wall or the arc)
  *   - any numeric value in the sim state is NaN or infinite
  *   - the game runs past 600 simulated seconds
+ *   - a ball outside the shooter lane stays below speed 10 for over 3 s
+ *     (the sim nudges a stopped ball after 2.5 s, so this means the nudge failed)
+ *   - a ball outside the shooter lane stays within 15 units of one spot
+ *     for over 10 s (trapped, even if it is jiggling)
  */
 'use strict';
 var fs = require('fs');
@@ -26,6 +30,12 @@ var FIRST_SEED = parseInt(process.argv[3], 10) || 1;
 var DT = 1 / 60;
 var MAX_SECONDS = 600;
 var EXIT_Y = 640;
+var STOP_SPEED = 10;        // below this a ball counts as stopped
+var STOP_SECONDS = 3.0;     // stopped for longer than this fails
+var TRAP_RADIUS = 15;       // a ball staying inside this radius counts as trapped
+var TRAP_SECONDS = 10;      // trapped for longer than this fails
+
+function inShooterLane(b) { return b.x > 360 && b.y > 600; }
 
 var html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 var m = html.match(/<script id="sim">([\s\S]*?)<\/script>/);
@@ -70,11 +80,15 @@ function findBadNumber(v, where) {
   return null;
 }
 
+var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, lane2: 0, lane3: 0, spin: 0, drop: 0, bank: 0, orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0, ramp0: 0, ramp1: 0, rampFail: 0, relay: 0,
+  missionReady: 0, missionStart: 0, missionDone: 0, missionFail: 0, wizardLit: 0, wizardStart: 0, superJackpot: 0, wizardEnd: 0 };
+
 function playGame(seed) {
   var sim = loadSim(seed);
   var input = mulberry32(seed ^ 0x9E3779B9);   // separate stream for the "player"
   var st = sim.st;
   var seen = [];                                // balls alive after the previous step
+  var track = [];                               // per-ball {ref, slow, ax, ay, trap} for the stuck checks
   var frame = 0;
 
   function fail(msg) {
@@ -90,6 +104,13 @@ function playGame(seed) {
     if (sim.inLane() && input() < 0.1) sim.launch(input());
 
     sim.step(DT);
+    for (var ei = 0; ei < sim.events.length; ei++) {
+      var ev = sim.events[ei];
+      if (ev.t === 'surprise') { if (ev.v === 'alley') EV.alley++; else if (ev.v === 'boss') EV.bossSurprise++; }
+      else if (ev.t === 'lane') EV['lane' + ev.v]++;
+      else if (ev.t === 'ramp') EV['ramp' + ev.v]++;
+      else if (EV[ev.t] !== undefined) EV[ev.t]++;
+    }
     sim.events.length = 0;
 
     var k, b, bad;
@@ -107,9 +128,37 @@ function playGame(seed) {
         return fail('ball removed above y=' + EXIT_Y + ', last seen x=' + seen[k].x.toFixed(1) + ' y=' + seen[k].y.toFixed(1));
       }
     }
+    // stuck checks, tracked per ball object across frames
+    var nextTrack = [];
+    for (k = 0; k < sim.balls.length; k++) {
+      b = sim.balls[k];
+      var tr = null, j;
+      for (j = 0; j < track.length; j++) if (track[j].ref === b) { tr = track[j]; break; }
+      if (!tr) tr = { ref: b, slow: 0, ax: b.x, ay: b.y, trap: 0 };
+      nextTrack.push(tr);
+      if (inShooterLane(b)) {
+        tr.slow = 0; tr.trap = 0; tr.ax = b.x; tr.ay = b.y;
+        continue;
+      }
+      if (Math.sqrt(b.vx * b.vx + b.vy * b.vy) < STOP_SPEED) tr.slow += DT; else tr.slow = 0;
+      if (tr.slow > STOP_SECONDS) {
+        return fail('ball stopped for over ' + STOP_SECONDS + 's at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
+      }
+      var ddx = b.x - tr.ax, ddy = b.y - tr.ay;
+      if (Math.sqrt(ddx * ddx + ddy * ddy) > TRAP_RADIUS) { tr.ax = b.x; tr.ay = b.y; tr.trap = 0; }
+      else tr.trap += DT;
+      if (tr.trap > TRAP_SECONDS) {
+        return fail('ball trapped within ' + TRAP_RADIUS + ' units for over ' + TRAP_SECONDS + 's at x=' + b.x.toFixed(1) + ' y=' + b.y.toFixed(1));
+      }
+    }
+    track = nextTrack;
     seen = sim.balls.map(function (q) { return { ref: q, x: q.x, y: q.y }; });
 
-    bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers');
+    bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers') ||
+          findBadNumber(sim.orbit, 'orbit') || findBadNumber(sim.hideout, 'hideout') ||
+          findBadNumber(sim.lanes, 'lanes') || findBadNumber(sim.kickback, 'kickback') ||
+          findBadNumber(sim.spinner, 'spinner') || findBadNumber(sim.drops, 'drops') || findBadNumber(sim.ramps, 'ramps') ||
+          findBadNumber(sim.missionDefs, 'missionDefs');
     if (bad) return fail('NaN: ' + bad);
     if (st.time > MAX_SECONDS) return fail('game still running after ' + MAX_SECONDS + ' simulated seconds');
   }
@@ -133,4 +182,13 @@ for (var g = 0; g < GAMES; g++) {
 console.log('');
 console.log(GAMES + ' games, ' + failures + ' failed. Average ' + (totalTime / Math.max(1, GAMES - failures)).toFixed(1) +
   's, longest ' + longest.toFixed(1) + 's, top score ' + top + '.');
+console.log('Events over ' + GAMES + ' games: orbit ' + EV.orbit + ', hideout ' + EV.hideout + ', hero ' + EV.hero +
+  ', bossStart ' + EV.bossStart + ', bossWin ' + EV.bossWin + ', bossEscape ' + EV.bossEscape +
+  ', surprise alley ' + EV.alley + ', surprise boss ' + EV.bossSurprise +
+  ', lockLit ' + EV.lockLit + ', lock ' + EV.lock + ', multiball ' + EV.multiball + ', kickback ' + EV.kickback +
+  ', lane0 ' + EV.lane0 + ', lane1 ' + EV.lane1 + ', lane2 ' + EV.lane2 + ', lane3 ' + EV.lane3 +
+  ', ramp0 ' + EV.ramp0 + ', ramp1 ' + EV.ramp1 + ', rampFail ' + EV.rampFail + ', relay ' + EV.relay +
+  ', spin ' + EV.spin + ', drop ' + EV.drop + ', bank ' + EV.bank +
+  ', missionReady ' + EV.missionReady + ', missionStart ' + EV.missionStart + ', missionDone ' + EV.missionDone + ', missionFail ' + EV.missionFail +
+  ', wizardLit ' + EV.wizardLit + ', wizardStart ' + EV.wizardStart + ', superJackpot ' + EV.superJackpot + ', wizardEnd ' + EV.wizardEnd + '.');
 process.exit(failures ? 1 : 0);
