@@ -80,7 +80,8 @@ function findBadNumber(v, where) {
   return null;
 }
 
-var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, lane2: 0, lane3: 0, spin: 0, drop: 0, bank: 0, orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0, ramp0: 0, ramp1: 0, rampFail: 0, relay: 0 };
+var EV = { lockLit: 0, lock: 0, multiball: 0, kickback: 0, lane0: 0, lane1: 0, lane2: 0, lane3: 0, spin: 0, drop: 0, bank: 0, orbit: 0, hideout: 0, hero: 0, bossStart: 0, bossWin: 0, bossEscape: 0, alley: 0, bossSurprise: 0, ramp0: 0, ramp1: 0, rampFail: 0, relay: 0,
+  missionReady: 0, missionStart: 0, missionDone: 0, missionFail: 0, wizardLit: 0, wizardStart: 0, superJackpot: 0, wizardEnd: 0 };
 
 function playGame(seed) {
   var sim = loadSim(seed);
@@ -156,7 +157,8 @@ function playGame(seed) {
     bad = findBadNumber(st, 'st') || findBadNumber(sim.flippers, 'flippers') ||
           findBadNumber(sim.orbit, 'orbit') || findBadNumber(sim.hideout, 'hideout') ||
           findBadNumber(sim.lanes, 'lanes') || findBadNumber(sim.kickback, 'kickback') ||
-          findBadNumber(sim.spinner, 'spinner') || findBadNumber(sim.drops, 'drops') || findBadNumber(sim.ramps, 'ramps');
+          findBadNumber(sim.spinner, 'spinner') || findBadNumber(sim.drops, 'drops') || findBadNumber(sim.ramps, 'ramps') ||
+          findBadNumber(sim.missionDefs, 'missionDefs');
     if (bad) return fail('NaN: ' + bad);
     if (st.time > MAX_SECONDS) return fail('game still running after ' + MAX_SECONDS + ' simulated seconds');
   }
@@ -186,5 +188,7 @@ console.log('Events over ' + GAMES + ' games: orbit ' + EV.orbit + ', hideout ' 
   ', lockLit ' + EV.lockLit + ', lock ' + EV.lock + ', multiball ' + EV.multiball + ', kickback ' + EV.kickback +
   ', lane0 ' + EV.lane0 + ', lane1 ' + EV.lane1 + ', lane2 ' + EV.lane2 + ', lane3 ' + EV.lane3 +
   ', ramp0 ' + EV.ramp0 + ', ramp1 ' + EV.ramp1 + ', rampFail ' + EV.rampFail + ', relay ' + EV.relay +
-  ', spin ' + EV.spin + ', drop ' + EV.drop + ', bank ' + EV.bank + '.');
+  ', spin ' + EV.spin + ', drop ' + EV.drop + ', bank ' + EV.bank +
+  ', missionReady ' + EV.missionReady + ', missionStart ' + EV.missionStart + ', missionDone ' + EV.missionDone + ', missionFail ' + EV.missionFail +
+  ', wizardLit ' + EV.wizardLit + ', wizardStart ' + EV.wizardStart + ', superJackpot ' + EV.superJackpot + ', wizardEnd ' + EV.wizardEnd + '.');
 process.exit(failures ? 1 : 0);

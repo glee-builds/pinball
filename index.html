@@ -183,7 +183,33 @@ canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-acti
             rampFail i x y      weak shot: ball stalled on the way up and rolled back out of the entrance (x,y = entrance)
             relay 0 x y         Team Relay: the other ramp made within 6 s of the last one (+1500)
             orbit 1 x y         CHANGED: now fires when ball makes the Rooftop Run crest (same awards as before), together with 'ramp' 1.
-                                The old bottom/top sensors no longer score; only the reverse run (top to bottom, 'alley') still uses orbit.by/ty. */
+                                The old bottom/top sensors no longer score; only the reverse run (top to bottom, 'alley') still uses orbit.by/ty.
+   ROUND 4 (missions, one mode at a time, wizard mode "Last Stand"). Rules only, no geometry changes.
+   exports  missionDefs  [{i,hero,name,goal,need,t}] data for the UI: i 0 Kite "Sky Patrol" goal "2 ramp crests" need 2 t 50; i 1 Ember "Fire Drill" "8 bumper hits" 8 in 35;
+                         i 2 Tide "Flood Gates" "5 drop targets" 5 in 40. need = steps to finish, t = seconds allowed (full time, live time only).
+   st       missions [0,0,0] per hero: 0 not ready, 1 ready (hero recruited once this game; start it with a Hideout capture), 2 running, 3 complete. Persist across balls and showdowns; reset by newGame, and by a finished wizard mode (cycle restarts)
+            mission  null or {i,n,need,t}  the running hero mission; n steps so far, t seconds left (counts down only while a ball is live). Survives a drained ball; dropped silently at game over
+            mode     'none'|'mission'|'showdown'|'wizard'  ONE mode at a time; read this to pick the HUD. st.boss / st.mission / st.wiz still hold the details
+            mq       [hero indexes] ready missions in start order (first in, first out); mq[0] is what the next Hideout capture starts. Pushed on missionReady and on missionFail (back of the line), shifted on missionStart; reset by newGame and a finished wizard mode
+   wizLit   true while Last Stand is earned (all 3 missions complete AND bossWins >= 1): the next Hideout capture with mode 'none' starts it
+            wiz      null or {t,jack}  Last Stand running: t seconds left of 40 (live time only), jack super jackpots so far
+            wizards  Last Stand modes finished this game
+   rules    Hideout capture with mode 'none': starts Last Stand if wizLit, else the first mission in st.mq, i.e. the one ready longest (recruiting happens first, so the capture that recruits Ember can start Ember's mission: missionReady then missionStart in the same frame).
+            If the 3rd hero joins while a mission runs, the showdown waits and starts the moment the mission ends (done or fail). No mission starts during a showdown.
+            Last Stand: every pts() is x3 (stacks with mult, multiball x2, gold x3); ramp crests are super jackpots; 2 extra balls are queued (3-ball), st.mb is set true,
+            ball saver 20 s (st.save=20, saveUsed=false). Locks cannot start during it; 'mbend' is held back until it ends (then fires as usual if <= 1 ball left). It survives a drained ball.
+            When it ends (timer or game over): heroes reset, missions back to [0,0,0], so everything can be earned again.
+   events   missionReady i       hero i's mission became ready (first recruit of that hero this game)
+            missionStart i       mission i began (Hideout capture)
+            missionStep n x y    a counted step, v = steps so far (x,y = where: ramp crest, bumper, drop target)
+            missionDone i        mission complete (+8000), st.mission null
+            missionFail i        time ran out, mission is ready again (missions[i] = 1)
+            surprise 'mission'   the first mission completed in a game (banner)
+            wizardLit            Last Stand earned (st.wizLit true)
+            wizardStart          Last Stand began (also surprise 'wizard' banner, and 'launch' events as the 2 extra balls feed in)
+            superJackpot n x y   ramp crest during Last Stand, +10000 (x3 etc), v = this game-mode jackpot count; 'ramp' still fires too
+            wizardEnd n          Last Stand over, v = super jackpots scored
+            surprise 'wizard'    Last Stand start banner */
 function makeSim(){
   var W=400,H=720,R=9,G=950,FR=7,SUB=8,VMAX=1700;
   var segs=[];
@@ -224,7 +250,10 @@ function makeSim(){
   var st={score:0,ball:1,mult:1,over:true,save:0,saveUsed:false,time:0,combo:0,comboT:0,mb:false,queue:0,
           frenzy:0,gold:0,lowG:0,mysT:12,mystery:null,skill:false,luckyUsed:false,bumps:0,maxCombo:0,mbCount:0,maxMult:1,play:0,
           heroes:[false,false,false],boss:null,bossWins:0,hideCd:0,alley:false,
-          lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1};
+          lockLit:false,locks:0,kick:true,banks:0,bankT:0,relays:0,rampT:0,rampLast:-1,
+          missions:[0,0,0],mission:null,mode:'none',wizLit:false,wiz:null,wizards:0,mq:[]};
+  var mBanner=false;
+  var missionDefs=[{i:0,hero:'Kite',name:'Sky Patrol',goal:'2 ramp crests',need:2,t:50},{i:1,hero:'Ember',name:'Fire Drill',goal:'8 bumper hits',need:8,t:35},{i:2,hero:'Tide',name:'Flood Gates',goal:'5 drop targets',need:5,t:40}];
   var lanes=[{i:0,x0:10,x1:36,y:590,t:0},{i:1,x0:36,x1:60,y:560,t:0},{i:2,x0:310,x1:334,y:560,t:0},{i:3,x0:334,x1:360,y:590,t:0}];
   var kickback={x:23,y1:520,y2:590};
   var spinner={x:345,y:300,w:13,a:0,av:0},spAcc=0,spCd=0;
@@ -257,6 +286,8 @@ function makeSim(){
     }else{hit(350,'ramp');lockBall(x,y);dmg(2,x,y);}
     if(!was)recruit(0);
     emit('ramp',r.i,x,y);relayMade(r.i,x,y);
+    mStep(0,x,y);
+    if(st.wiz){pts(10000);st.wiz.jack++;emit('superJackpot',st.wiz.jack,x,y);}
   }
   function rampPos(b,r){                 // place ball on the path at b.rs; velocity = u along the segment
     var c=r.cum,P=r.path,k=1,s=b.rs;
@@ -285,7 +316,7 @@ function makeSim(){
   var SPOTS=[[200,222],[75,340],[325,340],[120,430],[280,430]];
   var events=[];
   function emit(t,v,x,y){events.push({t:t,v:v,x:x,y:y});}
-  function pts(n){st.score+=n*st.mult*(st.mb?2:1)*(st.gold>0?3:1);}
+  function pts(n){st.score+=n*st.mult*(st.mb?2:1)*(st.gold>0?3:1)*(st.wiz?3:1);}
   function hit(n,kind,idx){            // a scoring hit; quick chains build the combo
     if(st.skill){st.skill=false;if(kind==='roll'&&idx===1){pts(2000);emit('surprise','skill');}}
     st.combo=st.comboT>0?Math.min(30,st.combo+1):1;st.comboT=2.2;
@@ -299,6 +330,7 @@ function makeSim(){
     st.score=0;st.ball=1;st.mult=1;st.over=false;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;st.mb=false;st.queue=0;
     st.frenzy=0;st.gold=0;st.lowG=0;st.mysT=12;st.mystery=null;st.skill=false;st.luckyUsed=false;st.bumps=0;st.maxCombo=0;st.mbCount=0;st.maxMult=1;st.play=0;
     st.heroes=[false,false,false];st.boss=null;st.bossWins=0;st.hideCd=0;st.alley=false;hideout.t=0;
+    st.missions=[0,0,0];st.mission=null;st.mode='none';st.wizLit=false;st.wiz=null;st.wizards=0;st.mq=[];mBanner=false;
     st.lockLit=false;st.locks=0;st.kick=true;st.banks=0;st.relays=0;st.rampT=0;st.rampLast=-1;resetBank();spinner.a=spinner.av=0;spAcc=0;spCd=0;lanes.forEach(function(l){l.t=0;});
     rolls.forEach(function(r){r.lit=false;});targets.forEach(function(t){t.lit=false;});placeBall();
   }
@@ -313,15 +345,45 @@ function makeSim(){
     b.vy=-(1080+560*p);b.vx=0;if(!st.saveUsed)st.save=6;st.skill=!st.mb;emit('launch',p);return true;
   }
   function recruit(i){                 // a hero joins; the full team starts the showdown
-    if(st.heroes[i])return;
+    if(st.heroes[i]||st.wiz)return;    // nobody joins during Last Stand (heroes reset when it ends)
     st.heroes[i]=true;pts(1000);emit('hero',i);
-    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&!st.boss){st.boss={hp:12,max:12,t:45};emit('bossStart');}
+    if(st.missions[i]===0){st.missions[i]=1;st.mq.push(i);emit('missionReady',i);}
+    tryBoss();
+  }
+  function mode(){return st.wiz?'wizard':st.boss?'showdown':st.mission?'mission':'none';}
+  function tryBoss(){                  // full team and nothing else running: showdown (waits behind a mission)
+    if(st.heroes[0]&&st.heroes[1]&&st.heroes[2]&&mode()==='none'){st.boss={hp:12,max:12,t:45};emit('bossStart');}
   }
   function bossEnd(){st.boss=null;st.heroes=[false,false,false];}
+  function chkWiz(){                   // Last Stand earned: 3 missions done and a showdown won
+    if(!st.wiz&&!st.wizLit&&st.bossWins>=1&&st.missions[0]===3&&st.missions[1]===3&&st.missions[2]===3){st.wizLit=true;emit('wizardLit');}
+  }
+  function mStep(i,x,y){               // one counted mission step
+    var m=st.mission;
+    if(!m||m.i!==i)return;
+    m.n++;emit('missionStep',m.n,x,y);
+    if(m.n>=m.need){
+      pts(8000);st.missions[i]=3;st.mission=null;emit('missionDone',i);
+      if(!mBanner){mBanner=true;emit('surprise','mission');}
+      tryBoss();chkWiz();
+    }
+  }
+  function mFail(){
+    var i=st.mission.i;st.missions[i]=1;st.mq.push(i);st.mission=null;emit('missionFail',i);tryBoss();
+  }
+  function wizStart(){
+    st.wiz={t:40,jack:0};st.wizLit=false;st.queue+=2;st.mb=true;st.save=20;st.saveUsed=false;
+    emit('wizardStart');emit('surprise','wizard');
+  }
+  function wizEnd(){
+    emit('wizardEnd',st.wiz.jack);st.wiz=null;st.wizards++;
+    st.missions=[0,0,0];st.mq=[];st.heroes=[false,false,false];
+    if(st.mb&&balls.length+st.queue<=1){st.mb=false;emit('mbend');}
+  }
   function dmg(n,x,y){                 // hit Baron Gloom
     if(!st.boss)return;
     st.boss.hp-=n;emit('bossHit',Math.max(0,st.boss.hp),x,y);
-    if(st.boss.hp<=0){pts(25000);emit('bossWin');emit('surprise','boss');st.bossWins++;bossEnd();}
+    if(st.boss.hp<=0){pts(25000);emit('bossWin');emit('surprise','boss');st.bossWins++;bossEnd();tryBoss();chkWiz();}
   }
   function award(){                    // a mystery prize (the star clears itself)
     var list=['bonus','mult','frenzy','moon','extra','saver','gold'],p=list[(Math.random()*list.length)|0];
@@ -336,7 +398,7 @@ function makeSim(){
     emit('surprise',p);
   }
   function lockBall(x,y){              // lit lock: a hideout capture or an orbit shot locks a ball; the 2nd starts multiball
-    if(!st.lockLit||st.mb)return;
+    if(!st.lockLit||st.mb||st.wiz)return;
     st.locks++;emit('lock',st.locks,x,y);
     if(st.locks>=2){st.locks=0;st.lockLit=false;st.mb=true;st.mbCount++;st.queue+=2;emit('multiball');}
   }
@@ -364,7 +426,7 @@ function makeSim(){
       ball.vx-=(1+s.e)*vn*nx;ball.vy-=(1+s.e)*vn*ny;
       if(s.kick&&-vn>70){ball.vx+=nx*s.kick;ball.vy+=ny*s.kick;hit(25,'sling');emit('sling',0,ball.x,ball.y);}
       else if(s.drop!==undefined&&-vn>90){
-        s.off=true;drops[s.drop].down=true;hit(200,'drop');emit('drop',s.drop,ball.x,ball.y);dmg(1,ball.x,ball.y);
+        s.off=true;drops[s.drop].down=true;hit(200,'drop');emit('drop',s.drop,ball.x,ball.y);dmg(1,ball.x,ball.y);mStep(2,ball.x,ball.y);
         if(dsegs[0].off&&dsegs[1].off&&dsegs[2].off){pts(3000);st.kick=true;st.banks++;st.bankT=1.5;rising=true;emit('bank');dmg(3,ball.x,ball.y);}
       }
       else if(-vn>220)emit('wall',-vn);
@@ -380,7 +442,7 @@ function makeSim(){
       if(kind==='bumper'){
         var out=ball.vx*nx+ball.vy*ny;
         if(out<520){ball.vx+=nx*(520-out);ball.vy+=ny*(520-out);}
-        st.bumps++;hit(100*(st.frenzy>0?5:1),'bumper');emit('bumper',idx,c.x,c.y);dmg(1,c.x,c.y);
+        st.bumps++;hit(100*(st.frenzy>0?5:1),'bumper');emit('bumper',idx,c.x,c.y);dmg(1,c.x,c.y);mStep(1,c.x,c.y);
         if(st.bumps%40===0){pts(10000);emit('surprise','comet');}
       }else if(-vn>90){
         hit(250,'target');c.lit=true;emit('target',idx);dmg(2,c.x,c.y);
@@ -440,6 +502,8 @@ function makeSim(){
       st.play+=dt;
       if(st.hideCd>0)st.hideCd=Math.max(0,st.hideCd-dt);
       if(st.boss){st.boss.t-=dt;if(st.boss.t<=0){emit('bossEscape');bossEnd();}}
+      if(st.mission){st.mission.t-=dt;if(st.mission.t<=0)mFail();}
+      if(st.wiz){st.wiz.t-=dt;if(st.wiz.t<=0)wizEnd();}
       if(st.mystery){st.mystery.t-=dt;if(st.mystery.t<=0)st.mystery=null;}
       else{st.mysT-=dt;if(st.mysT<=0){var spot=SPOTS[(Math.random()*SPOTS.length)|0];st.mystery={x:spot[0],y:spot[1],t:9};st.mysT=13+Math.random()*14;emit('mysteryUp');}}
     }
@@ -500,11 +564,13 @@ function makeSim(){
         var hx=ball.x-hideout.x,hy=ball.y-hideout.y;
         if(hx*hx+hy*hy<hideout.r*hideout.r){
           ball.x=hideout.x;ball.y=hideout.y;ball.vx=ball.vy=0;ball.still=0;ball.hold=hideout.t=hideout.hold;
-          var was2=st.boss!==null;
+          var was2=st.boss!==null,pick=-1;
+          if(mode()==='none'&&st.wizLit)wizStart();   // Last Stand first: this capture must not also lock a ball
           hit(300,'hideout');emit('hideout',0,ball.x,ball.y);
           if(st.hideCd<=0){award();st.hideCd=20;}
           lockBall(ball.x,ball.y);
           dmg(2,ball.x,ball.y);if(!was2)recruit(1);
+          if(mode()==='none'){if(st.mq.length)pick=st.mq.shift();if(pick>=0){st.missions[pick]=2;st.mission={i:pick,n:0,need:missionDefs[pick].need,t:missionDefs[pick].t};emit('missionStart',pick);}}
           continue;
         }
       }
@@ -534,21 +600,22 @@ function makeSim(){
       pts(1000);emit('bonus',st.mult);recruit(2);
     }
     if(st.save>0){for(k=0;k<balls.length;k++)if(balls[k].x<=360){st.save-=dt;break;}}
-    if(st.mb&&balls.length+st.queue<=1){st.mb=false;emit('mbend');}
+    if(st.mb&&!st.wiz&&balls.length+st.queue<=1){st.mb=false;emit('mbend');}
     if(balls.length===0&&st.queue===0){
       if(st.save>0){st.save=0;st.saveUsed=true;placeBall();emit('save');}
       else if(!st.luckyUsed&&Math.random()<0.15){st.luckyUsed=true;placeBall();emit('surprise','lucky');}
       else{
         st.luckyUsed=false;st.frenzy=0;st.gold=0;st.lowG=0;st.mystery=null;
         st.ball++;st.mult=1;st.save=0;st.saveUsed=false;st.combo=0;st.comboT=0;rolls.forEach(function(z){z.lit=false;});
-        if(st.ball>3){st.ball=3;st.over=true;bossEnd();emit('over');}
+        if(st.ball>3){st.ball=3;st.over=true;bossEnd();if(st.mission){st.missions[st.mission.i]=1;st.mission=null;}if(st.wiz)wizEnd();emit('over');}
         else{placeBall();st.kick=true;resetBank();emit('drain');}
       }
     }
+    st.mode=mode();
   }
   function step(dt){if(dt>0.034)dt=0.034;var h=dt/SUB;for(var k=0;k<SUB;k++)sub(h);st.time+=dt;}
   function setFlipper(k,on){if(flippers[k].pressed!==on){flippers[k].pressed=on;if(on)emit('flip');}}
-  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,flippers:flippers,balls:balls,st:st,events:events,
+  return {W:W,H:H,R:R,FR:FR,segs:segs,bumpers:bumpers,targets:targets,rolls:rolls,orbit:orbit,lanes:lanes,kickback:kickback,spinner:spinner,drops:drops,hideout:hideout,ramps:ramps,missionDefs:missionDefs,flippers:flippers,balls:balls,st:st,events:events,
           step:step,launch:launch,inLane:inLane,newGame:newGame,setFlipper:setFlipper,tip:tip};
 }
 </script>
